@@ -4,4 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-html-builder = { git = "https://github.com/AlanRandon/html-builder.git" }
+html-builder = { path = "../html-builder" }
+http = "1.1.0"
+http-body-util = "0.1.2"
+hyper = { version = "1.4.1", features = ["full"] }
+hyper-util = { version = "0.1.7", features = ["full"] }
+tokio = { version = "1.39.3", features = ["full"] }
