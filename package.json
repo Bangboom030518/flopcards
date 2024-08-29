@@ -1,0 +1,22 @@
+{
+  "name": "cupcakke-remixer",
+  "version": "1.0.0",
+  "description": "",
+  "main": "tailwind.config.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Bangboom030518/cupcakKe-remixer.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Bangboom030518/cupcakKe-remixer/issues"
+  },
+  "homepage": "https://github.com/Bangboom030518/cupcakKe-remixer#readme",
+  "devDependencies": {
+    "@tailwindcss/typography": "^0.5.14"
+  }
+}
