@@ -1,13 +1,25 @@
 use html_builder::prelude::*;
 use std::fmt::Display;
 
-pub fn fab(asset_name: impl Display, alt_text: impl Display) -> Div {
-    div().class("fixed bottom-0 right-0 w-20 h-20 m-8 overflow-visible").child(button()
-        .class(
-            "inset-0 w-full h-full bg-pink-600 shadow-md transition hover:scale-105 focus:scale-105 hover:shadow-lg hover:bg-pink-700 focus:bg-pink-700 active:bg-pink-800 border-8 border-pink-700 rounded-full",
-        )
-        .child(img().class("w-full h-full m-0").src(format!("/assets/{asset_name}.svg")).alt(&alt_text)))
-        .child(p().class("bg-gray-950 bg-opacity-80 rounded absolute min-h-[1ch] text-white min-w-40 w-fit inset-x-0 bottom-0 mt-[100%] m-x-auto text-center").text(&alt_text)
-        )
-        .child(menu().child(button().text("Import Audio")).child(button().text("Create Remix")))
+pub fn text_input(id: impl Display, label_text: impl Display) -> Div {
+    div().class("input w-full")
+        .child(input()
+               .class("bg-transparent text-center text-lg left-0 absolute font-medium outline-none peer w-full placeholder:text-transparent placeholder:select-none autofill:text-input-base")
+               .r#type("text").placeholder(&label_text).id(&id))
+        .child(label().r#for(&id).class("absolute left-0 w-full h-fit transition-[top, font, color] duration-input peer-focus:text-xs peer-no-placeholder:text-xs peer-focus:top-0 peer-no-placeholder:top-0 peer-focus:font-bold peer-no-placeholder:font-bold cursor-text").text(&label_text))
+        .child(span().class("border-white border-b-input w-full absolute bottom-0 left-0"))
+        .child(span().class("border-input-accent-strong border-b-input-lg peer-focus:scale-x-100 peer-no-placeholder:scale-x-100 transform left-0 scale-x-0 w-full bottom-0 absolute z-20 transition-[transform] duration-input"))
+}
+
+pub fn action_button(id: impl Display, text: impl Display) -> Button {
+    /*
+            hover:shadow-md
+            hover:bg-input-accent-weak
+            focus:shadow-md
+            focus:bg-input-accent-weak
+            active:bg-input-accent-strong
+            active:opacity-100
+            w-full
+    */
+    button().id(id).text(text).class("btn w-full")
 }

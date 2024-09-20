@@ -3,13 +3,42 @@
 @tailwind utilities;
 
 @layer base {
-	html {
-		margin: 0;
-		width: 100%;
-		height: 100%;
-	}
+  html {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+  }
 
-	body {
-		@apply w-full m-0 grid place-items-center h-full min-h-fit;
-	}
+  body {
+    @apply prose w-full m-0 grid place-items-center h-full min-h-fit;
+  }
+
+  input {
+    outline: none;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+}
+
+@layer components {
+  .input {
+    @apply bg-input-primary text-center text-input-base shadow-sm overflow-hidden input-ring rounded h-input relative p-3 text-lg transition duration-input;
+  }
+
+  .btn {
+    @apply input hover:shadow-md hover:bg-input-accent-weak focus:shadow-md focus:bg-input-accent-weak active:bg-input-accent-strong active:opacity-100;
+  }
+  .input-ring {
+    @apply ring-offset-2 ring-input-accent-strong focus:ring-4 focus-within:ring-4;
+  }
+}
+
+@layer utilities {
+  .center-absolute {
+    top: 50%;
+    left: 50%;
+    translate: -50% -50%;
+  }
 }

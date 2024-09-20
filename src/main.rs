@@ -20,12 +20,9 @@ async fn index(
         .child(head().template().style(include_str!("./output.css")))
         .child(
             body()
-                .child(
-                    h1().class("bg-red-400 text-9xl center")
-                        .text("Hello World!"),
-                )
+                .child(h1().text("Hello World!"))
                 .child(p().text(request.uri()))
-                .child(components::fab("create", "Create New")),
+                .child(components::text_input("input", "Label")),
         );
     let html = format!("<!DOCTYPE html>\n{html}");
     let response = http::Response::builder()
