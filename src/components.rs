@@ -1,14 +1,12 @@
 use html_builder::prelude::*;
 use std::fmt::Display;
 
-pub fn text_input(id: impl Display, label_text: impl Display) -> Div {
-    div().class("input w-full")
+pub fn text_input(id: impl Display, label_text: impl Display, kind: InputType) -> Div {
+    div().class("input text-input text-left w-full bg-gray-200 rounded-t hover:bg-gray-300 has-[input:focus]:bg-gray-300 border-b-input border-black overflow-visible")
         .child(input()
-               .class("bg-transparent text-center text-lg left-0 absolute font-medium outline-none peer w-full placeholder:text-transparent placeholder:select-none autofill:text-input-base")
-               .r#type("text").placeholder(&label_text).id(&id))
-        .child(label().r#for(&id).class("absolute left-0 w-full h-fit transition-[top, font, color] duration-input peer-focus:text-xs peer-no-placeholder:text-xs peer-focus:top-0 peer-no-placeholder:top-0 peer-focus:font-bold peer-no-placeholder:font-bold cursor-text").text(&label_text))
-        .child(span().class("border-white border-b-input w-full absolute bottom-0 left-0"))
-        .child(span().class("border-input-accent-strong border-b-input-lg peer-focus:scale-x-100 peer-no-placeholder:scale-x-100 transform left-0 scale-x-0 w-full bottom-0 absolute z-20 transition-[transform] duration-input"))
+               .class("bg-transparent text-left ml-3 text-lg inset-0 margin-auto absolute font-medium outline-none peer w-full autofill:text-white no-placeholder")
+               .r#type(kind).placeholder(&label_text).id(&id))
+        .child(label(&id).class("absolute left-0 w-full h-fit transition-all duration-input text-left ml-3 cursor-text bottom-1/2 translate-y-1/2 peer-typing:text-accent-600 peer-typing:text-xs peer-typing:translate-y-[-1em] peer-typing:font-bold").text(&label_text))
 }
 
 pub fn action_button(id: impl Display, text: impl Display) -> Button {
@@ -21,5 +19,5 @@ pub fn action_button(id: impl Display, text: impl Display) -> Button {
             active:opacity-100
             w-full
     */
-    button().id(id).text(text).class("btn w-full")
+    button().id(id).text(text).class("input bg-accent-600 rounded hover:bg-accent-500 focus:bg-accent-500 active:bg-accent-700 text-white w-full w-full")
 }

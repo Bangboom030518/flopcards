@@ -19,10 +19,22 @@ async fn index(
         .attribute("lang", "en")
         .child(head().template().style(include_str!("./output.css")))
         .child(
-            body()
-                .child(h1().text("Hello World!"))
-                .child(p().text(request.uri()))
-                .child(components::text_input("input", "Label")),
+            body().child(
+                html_builder::prelude::main()
+                    .class("w-[50ch] min-h-3/4 card")
+                    .child(h1("Login"))
+                    .child(
+                        form(FormMethod::Post, "/login")
+                            .class("w-full grid gap-4")
+                            .child(components::text_input("email", "Email", InputType::Email))
+                            .child(components::text_input(
+                                "password",
+                                "Password",
+                                InputType::Password,
+                            ))
+                            .child(components::action_button("submit-login", "Login")),
+                    ),
+            ),
         );
     let html = format!("<!DOCTYPE html>\n{html}");
     let response = http::Response::builder()
@@ -42,6 +54,7 @@ async fn router(
         let bytes = fs::read(format!("/{}/assets/{asset}", env!("CARGO_MANIFEST_DIR"))).unwrap();
         let content_type = match asset.split_once(".").expect("no mime type").1 {
             "svg" => "image/svg+xml; charset=utf-8",
+            "jpg" | "jpeg" => "image/jpeg",
             file_extension => todo!("handle '.{file_extension}' files"),
         };
         let response = http::Response::builder()

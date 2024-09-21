@@ -1,0 +1,22 @@
+<div
+  class="w-full relative bg-input-primary text-input-base shadow-sm overflow-hidden h-input p-3 rounded input-ring"
+>
+  <input
+    type="text"
+    class="bg-transparent text-center text-lg left-0 absolute font-medium outline-none peer w-full placeholder:text-transparent placeholder:select-none autofill:text-input-base"
+    placeholder="Label"
+    id="input"
+  />
+  <label
+    for="input"
+    class="absolute left-0 text-lg w-full h-fit transition-[top, font, color] duration-input peer-focus:text-xs peer-no-placeholder:text-xs peer-focus:top-0 peer-no-placeholder:top-0 peer-focus:font-bold peer-no-placeholder:font-bold cursor-text"
+  >
+    Label
+  </label>
+  <span
+    class="border-white border-b-input w-full absolute bottom-0 left-0"
+  ></span>
+  <span
+    class="border-input-accent-strong border-b-input-lg peer-focus:scale-x-100 peer-no-placeholder:scale-x-100 transform left-0 scale-x-0 w-full bottom-0 absolute z-20 transition-[transform] duration-input"
+  ></span>
+</div>
