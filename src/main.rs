@@ -1,4 +1,5 @@
 use html_builder::prelude::*;
+use http::Method;
 use http_body_util::Full;
 use hyper::body::Bytes;
 use hyper::server::conn::http1;
@@ -15,55 +16,43 @@ mod components;
 async fn index(
     request: Request<hyper::body::Incoming>,
 ) -> Result<Response<Full<Bytes>>, Infallible> {
-    let html = html()
-        .attribute("lang", "en")
+    html("en")
         .child(head().template().style(include_str!("./output.css")))
         .child(
-            body().child(
-                html_builder::prelude::main()
-                    .class("w-[50ch] min-h-3/4 card")
-                    .child(h1("Login"))
-                    .child(
-                        form(FormMethod::Post, "/login")
-                            .class("w-full grid gap-4")
-                            .child(components::text_input("email", "Email", InputType::Email))
-                            .child(components::text_input(
-                                "password",
-                                "Password",
-                                InputType::Password,
-                            ))
-                            .child(components::action_button("submit-login", "Login")),
-                    ),
-            ),
-        );
-    let html = format!("<!DOCTYPE html>\n{html}");
-    let response = http::Response::builder()
-        .header(http::header::CONTENT_TYPE, "text/html; charset=utf-8")
-        .body(Full::new(Bytes::from(html)))
-        .unwrap();
-    Ok(response)
+            body()
+                .child(h1("Welcome to Flopcards"))
+                .child(section().child(h2("Money")).class("card w-full"))
+                .child(components::fab("create", "create")),
+        )
+        .response_ok()
 }
 
 async fn router(
     request: Request<hyper::body::Incoming>,
 ) -> Result<Response<Full<Bytes>>, Infallible> {
     let path = request.uri().path();
-    if path == "/" {
-        index(request).await
-    } else if let Some(asset) = path.strip_prefix("/assets/") {
-        let bytes = fs::read(format!("/{}/assets/{asset}", env!("CARGO_MANIFEST_DIR"))).unwrap();
-        let content_type = match asset.split_once(".").expect("no mime type").1 {
-            "svg" => "image/svg+xml; charset=utf-8",
-            "jpg" | "jpeg" => "image/jpeg",
-            file_extension => todo!("handle '.{file_extension}' files"),
-        };
-        let response = http::Response::builder()
-            .header(http::header::CONTENT_TYPE, content_type)
-            .body(Full::new(Bytes::from(bytes)))
-            .unwrap();
-        return Ok(response);
-    } else {
-        todo!("404")
+    match *request.method() {
+        Method::GET => {
+            if path == "/" {
+                index(request).await
+            } else if let Some(asset) = path.strip_prefix("/assets/") {
+                let bytes =
+                    fs::read(format!("/{}/assets/{asset}", env!("CARGO_MANIFEST_DIR"))).unwrap();
+                let content_type = match asset.split_once(".").expect("no mime type").1 {
+                    "svg" => "image/svg+xml; charset=utf-8",
+                    "jpg" | "jpeg" => "image/jpeg",
+                    file_extension => todo!("handle '.{file_extension}' files"),
+                };
+                let response = http::Response::builder()
+                    .header(http::header::CONTENT_TYPE, content_type)
+                    .body(Full::new(Bytes::from(bytes)))
+                    .unwrap();
+                return Ok(response);
+            } else {
+                todo!("404")
+            }
+        }
+        _ => todo!("404"),
     }
 }
 
@@ -86,7 +75,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         tokio::task::spawn(async move {
             // Finally, we bind the incoming connection to our `hello` service
             if let Err(err) = http1::Builder::new()
-                // `service_fn` converts our function in a `Service`
                 .serve_connection(io, service_fn(router))
                 .await
             {

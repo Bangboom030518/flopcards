@@ -182,6 +182,8 @@ name = "html-builder"
 version = "0.1.0"
 dependencies = [
  "html-escape",
+ "http-body-util",
+ "hyper",
  "itertools",
 ]
 

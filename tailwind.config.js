@@ -28,7 +28,7 @@ module.exports = {
       },
       colors: {
         transparent: "transparent",
-        accent: colors.violet,
+        accent: colors.fuchsia,
       },
       transitionDuration: {
         input: "100ms",
