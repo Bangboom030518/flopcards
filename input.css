@@ -4,13 +4,11 @@
 
 @layer base {
   html {
-    margin: 0;
-    width: 100%;
-    height: 100%;
+    @apply m-0 w-full h-full;
   }
 
   body {
-    @apply w-full m-0 h-full p-8 grid gap-8 bg-white text-black dark:bg-gray-950 dark:text-white;
+    @apply w-full m-0 h-fit;
   }
 
   input {
@@ -27,6 +25,14 @@
 
   h1 {
     @apply text-5xl font-bold;
+  }
+
+  h2 {
+    @apply text-4xl font-bold;
+  }
+
+  h3 {
+    @apply text-3xl font-bold;
   }
 }
 
@@ -48,12 +54,31 @@
     @apply scale-x-100;
   }
 
+  .btn {
+    @apply input no-underline rounded-lg p-2 gap-2 flex justify-center items-center;
+  }
+
+  .btn img {
+    @apply h-full w-auto;
+  }
+  .btn p {
+    @apply w-fit h-fit;
+  }
+
   .card {
     @apply grid place-items-center p-4 gap-4 shadow-lg rounded-lg bg-gray-100 bg-opacity-75 backdrop-blur text-black dark:bg-gray-900 dark:bg-opacity-75 dark:text-white;
   }
 }
 
 @layer utilities {
+  .input-gray {
+    @apply bg-gray-200 text-black hover:bg-gray-300 focus-within:bg-gray-300 active:bg-gray-400 dark:bg-gray-800 dark:text-white dark:hover:bg-gray-700 dark:focus-within:bg-gray-700 dark:active:bg-gray-600;
+  }
+
+  .input-accent {
+    @apply bg-accent-600 hover:bg-accent-500 focus:bg-accent-500 active:bg-accent-700 text-white;
+  }
+
   .center-absolute {
     top: 50%;
     left: 50%;

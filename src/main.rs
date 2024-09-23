@@ -1,3 +1,4 @@
+use components::InputStyle;
 use html_builder::prelude::*;
 use http::Method;
 use http_body_util::Full;
@@ -13,15 +14,145 @@ use tokio::net::TcpListener;
 
 mod components;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Subject {
+    Maths,
+    FurtherMaths,
+    Spanish,
+    Geography,
+    Other,
+}
+
+impl Subject {
+    fn id(self) -> String {
+        let id = match self {
+            Self::Maths => "maths",
+            Self::FurtherMaths => "further-maths",
+            Self::Spanish => "spanish",
+            Self::Geography => "geography",
+            Self::Other => "other",
+        };
+        format!("subject-{id}")
+    }
+
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Maths => "Maths",
+            Self::FurtherMaths => "Further Maths",
+            Self::Spanish => "Spanish",
+            Self::Geography => "Geography",
+            Self::Other => "Other",
+        }
+    }
+
+    const fn icon_name(self) -> &'static str {
+        match self {
+            Self::Maths => "calculate",
+            Self::FurtherMaths => "sigma",
+            Self::Spanish => "translate",
+            Self::Geography => "globe",
+            Self::Other => "more",
+        }
+    }
+
+    fn icon_path(self) -> String {
+        format!("assets/{}.svg", self.icon_name())
+    }
+
+    fn all() -> [Self; 5] {
+        [
+            Self::Maths,
+            Self::FurtherMaths,
+            Self::Spanish,
+            Self::Geography,
+            Self::Other,
+        ]
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Set {
+    pub name: String,
+    pub id: String,
+    pub subject: Subject,
+}
+
+impl Set {
+    pub fn new(name: &str, id: &str, subject: Subject) -> Self {
+        Self {
+            name: name.to_string(),
+            id: id.to_string(),
+            subject,
+        }
+    }
+
+    #[deprecated = "use `new` instead"]
+    pub fn new_gen_id(name: &str, subject: Subject) -> Self {
+        Self {
+            name: name.to_string(),
+            id: name.to_string(),
+            subject,
+        }
+    }
+}
+
+fn subject_menu() -> Menu {
+    components::btn_group(
+        std::iter::once(
+            button("btn-subject-all")
+                .class("btn input-accent")
+                .child(img("assets/star.svg", "All").size(24, 24))
+                .child(p("All")),
+        )
+        .chain(Subject::all().map(|subject| {
+            button(subject.id())
+                .class("btn input-gray")
+                .child(img(subject.icon_path(), subject.name()).size(24, 24))
+                .child(p(subject.name()))
+        })),
+    )
+    .class("w-fit")
+}
+
+#[deprecated = "data is example"]
+fn example_sets() -> Vec<Set> {
+    vec![
+        Set::new_gen_id("Vocab 1", Subject::Spanish),
+        Set::new_gen_id("Vocab 2", Subject::Spanish),
+        Set::new_gen_id("Vocab 3", Subject::Spanish),
+        Set::new_gen_id("Vocab 4", Subject::Spanish),
+        Set::new_gen_id("Vocab 5", Subject::Spanish),
+        Set::new_gen_id("Vocab 6", Subject::Spanish),
+    ]
+}
+
+fn set_list(sets: Vec<Set>) -> Section {
+    section()
+        .class("grid grid-flow-row w-full gap-4")
+        .children(sets.into_iter().map(|set| {
+            article()
+                .class("card w-full grid-flow-col")
+                .child(h3(set.name))
+                .child(p(set.subject.name()))
+                .child(
+                    a(format!("/sets/{}", set.id))
+                        .class("btn input-accent")
+                        .text("View Set"),
+                )
+        }))
+}
+
 async fn index(
     request: Request<hyper::body::Incoming>,
 ) -> Result<Response<Full<Bytes>>, Infallible> {
     html("en")
-        .child(head().template().style(include_str!("./output.css")))
+        .child(head().template().style(include_str!("./output.css")).title("Flopcards - Home").raw_text("<script src='assets/htmx.min.js'></script>"))
         .child(
             body()
-                .child(h1("Welcome to Flopcards"))
-                .child(section().child(h2("Money")).class("card w-full"))
+                .class("p-8 grid place-items-center items-start gap-8 bg-white text-black dark:bg-gray-950 dark:text-white")
+                .child(h1("Flopcards"))
+                .child(subject_menu())
+                .child(set_list(example_sets()))
                 .child(components::fab("create", "create")),
         )
         .response_ok()
@@ -41,6 +172,7 @@ async fn router(
                 let content_type = match asset.split_once(".").expect("no mime type").1 {
                     "svg" => "image/svg+xml; charset=utf-8",
                     "jpg" | "jpeg" => "image/jpeg",
+                    "min.js" | "js" => "text/javascript",
                     file_extension => todo!("handle '.{file_extension}' files"),
                 };
                 let response = http::Response::builder()
