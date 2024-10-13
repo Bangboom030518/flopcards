@@ -24,17 +24,50 @@ impl Display for InputStyle {
     }
 }
 
-pub fn fab(id: impl Display, logo: &str) -> Button {
+pub fn fab(id: impl Display, logo: impl Display) -> Button {
     button(id)
         .child(img(format!("assets/{logo}.svg"), "").class("w-full h-full"))
-        .class("input input-accent w-[7.5ch] h-[7.5ch] rounded-full fixed bottom-8 right-8")
+        .class("input input-accent w-[7.5ch] h-[7.5ch] rounded-full")
 }
 
-pub fn btn_group(buttons: impl IntoIterator<Item = Button>) -> Menu {
+pub fn button_with_icon(id: impl Display, icon: impl Display, text: impl Display) -> Button {
+    button(id)
+        .child(img(format!("/assets/{icon}.svg"), &text).size(24, 24))
+        .child(p(text))
+}
+
+pub fn fab_dropdown(
+    id: impl Display,
+    logo: impl Display,
+    buttons: impl IntoIterator<Item = Button>,
+) -> Div {
+    div()
+        .class("fixed bottom-8 right-8 flex flex-col-reverse items-center")
+        .child(fab(id, logo).class("peer"))
+        .child(
+            vertical_btn_group(
+                buttons
+                    .into_iter()
+                    .map(|button| button.class("btn input-gray grid grid-cols-[auto,1fr]")),
+            )
+            .class("opacity-0 peer-focus:opacity-100 focus-within:opacity-100 pointer-events-none peer-focus:pointer-events-auto focus-within:pointer-events-auto transition duration-input"),
+        )
+}
+
+pub fn horizontal_btn_group(buttons: impl IntoIterator<Item = Button>) -> Menu {
     menu(
         buttons
             .into_iter()
             .map(|button| button.class("first:rounded-l-lg last:rounded-r-lg rounded-none")),
     )
     .class("grid grid-flow-col gap-1")
+}
+
+pub fn vertical_btn_group(buttons: impl IntoIterator<Item = Button>) -> Menu {
+    menu(
+        buttons
+            .into_iter()
+            .map(|button| button.class("first:rounded-t-lg last:rounded-b-lg rounded-none w-full")),
+    )
+    .class("grid grid-flow-row gap-1")
 }

@@ -1,4 +1,3 @@
-use components::InputStyle;
 use html_builder::prelude::*;
 use http::Method;
 use http_body_util::Full;
@@ -7,10 +6,14 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Request, Response};
 use hyper_util::rt::TokioIo;
+use itertools::Itertools;
+use std::collections::HashMap;
 use std::convert::Infallible;
 use std::fs;
 use std::net::SocketAddr;
+use std::str::FromStr;
 use tokio::net::TcpListener;
+use url::Url;
 
 mod components;
 
@@ -24,25 +27,18 @@ pub enum Subject {
 }
 
 impl Subject {
-    fn id(self) -> String {
-        let id = match self {
+    const fn id(self) -> &'static str {
+        match self {
             Self::Maths => "maths",
             Self::FurtherMaths => "further-maths",
             Self::Spanish => "spanish",
             Self::Geography => "geography",
             Self::Other => "other",
-        };
-        format!("subject-{id}")
+        }
     }
 
-    const fn name(self) -> &'static str {
-        match self {
-            Self::Maths => "Maths",
-            Self::FurtherMaths => "Further Maths",
-            Self::Spanish => "Spanish",
-            Self::Geography => "Geography",
-            Self::Other => "Other",
-        }
+    fn name(self) -> String {
+        self.id().replace("-", " ")
     }
 
     const fn icon_name(self) -> &'static str {
@@ -52,6 +48,19 @@ impl Subject {
             Self::Spanish => "translate",
             Self::Geography => "globe",
             Self::Other => "more",
+        }
+    }
+
+    const fn color(self) -> &'static str {
+        // bg-orange-800 bg-red-800 bg-yellow-800 bg-emerald-800 bg-purple-800
+        // bg-orange-950 bg-red-950 bg-yellow-950 bg-emerald-950 bg-purple-950
+        // input-orange input-red input-yellow input-emerald input-purple
+        match self {
+            Self::Maths => "orange",
+            Self::FurtherMaths => "red",
+            Self::Spanish => "yellow",
+            Self::Geography => "emerald",
+            Self::Other => "purple",
         }
     }
 
@@ -70,19 +79,36 @@ impl Subject {
     }
 }
 
+impl FromStr for Subject {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "maths" => Ok(Self::Maths),
+            "further-maths" => Ok(Self::FurtherMaths),
+            "spanish" => Ok(Self::Spanish),
+            "geography" => Ok(Self::Geography),
+            "other" => Ok(Self::Other),
+            _ => Err(()),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Set {
     pub name: String,
     pub id: String,
     pub subject: Subject,
+    pub size: usize,
 }
 
 impl Set {
-    pub fn new(name: &str, id: &str, subject: Subject) -> Self {
+    pub fn new(name: &str, id: &str, subject: Subject, size: usize) -> Self {
         Self {
             name: name.to_string(),
             id: id.to_string(),
             subject,
+            size,
         }
     }
 
@@ -92,70 +118,107 @@ impl Set {
             name: name.to_string(),
             id: name.to_string(),
             subject,
+            size: 69,
         }
     }
 }
 
 fn subject_menu() -> Menu {
-    components::btn_group(
-        std::iter::once(
-            button("btn-subject-all")
-                .class("btn input-accent")
-                .child(img("assets/star.svg", "All").size(24, 24))
-                .child(p("All")),
-        )
-        .chain(Subject::all().map(|subject| {
-            button(subject.id())
-                .class("btn input-gray")
-                .child(img(subject.icon_path(), subject.name()).size(24, 24))
-                .child(p(subject.name()))
-        })),
-    )
+    components::horizontal_btn_group(Subject::all().map(|subject| {
+        button(format!("subject-{}", subject.id()))
+            .class(format!("btn input-{}", subject.color()))
+            .hx_get(format!("/view/sets?subject={}", subject.id()))
+            .hx_target("#setlist")
+            .hx_swap("outerHTML swap:200ms")
+            .child(img(subject.icon_path(), subject.name()).size(24, 24))
+            .child(p(subject.name()))
+    }))
     .class("w-fit")
 }
 
 #[deprecated = "data is example"]
-fn example_sets() -> Vec<Set> {
+fn example_sets(subject: Subject) -> Vec<Set> {
     vec![
-        Set::new_gen_id("Vocab 1", Subject::Spanish),
-        Set::new_gen_id("Vocab 2", Subject::Spanish),
-        Set::new_gen_id("Vocab 3", Subject::Spanish),
-        Set::new_gen_id("Vocab 4", Subject::Spanish),
-        Set::new_gen_id("Vocab 5", Subject::Spanish),
-        Set::new_gen_id("Vocab 6", Subject::Spanish),
+        Set::new_gen_id("Set 1", subject),
+        Set::new_gen_id("Set 2", subject),
+        Set::new_gen_id("Set 3", subject),
+        Set::new_gen_id("Set 4", subject),
+        Set::new_gen_id("Set 5", subject),
+        Set::new_gen_id("Set 6", subject),
     ]
 }
 
 fn set_list(sets: Vec<Set>) -> Section {
     section()
-        .class("grid grid-flow-row w-full gap-4")
-        .children(sets.into_iter().map(|set| {
-            article()
-                .class("card w-full grid-flow-col")
-                .child(h3(set.name))
-                .child(p(set.subject.name()))
-                .child(
-                    a(format!("/sets/{}", set.id))
-                        .class("btn input-accent")
-                        .text("View Set"),
-                )
-        }))
+        .id("setlist")
+        .class("grid grid-cols-3 w-full gap-4 fade-out")
+        .children(
+            sets.into_iter()
+                .map(|set| {
+                    article()
+                        .class(format!("card w-full bg-{}-950", set.subject.color()))
+                        .child(h3(set.name))
+                        .child(
+                            div()
+                                .class("w-full flex justify-between")
+                                .child(p(format!("{} cards", set.size)))
+                                .child(p(set.subject.name()).class(format!(
+                                "rounded-full border border-black dark:border-white px-2 bg-{}-800",
+                                set.subject.color()
+                            ))),
+                        )
+                        .child(
+                            a(format!("/sets/{}", set.id))
+                                .class("btn input-accent w-full")
+                                .child(img("/assets/study.svg", "study").size(24, 24))
+                                .child(p("study")),
+                        )
+                })
+                .collect_vec(),
+        )
 }
 
-async fn index(
-    request: Request<hyper::body::Incoming>,
-) -> Result<Response<Full<Bytes>>, Infallible> {
+fn index(request: Request<hyper::body::Incoming>) -> Html {
     html("en")
-        .child(head().template().style(include_str!("./output.css")).title("Flopcards - Home").raw_text("<script src='assets/htmx.min.js'></script>"))
+        .child(
+            head()
+                .template()
+                .style(include_str!("./output.css"))
+                .title("flopcards - home")
+                .raw_text("<script src='assets/htmx.min.js'></script>"),
+        )
         .child(
             body()
-                .class("p-8 grid place-items-center items-start gap-8 bg-white text-black dark:bg-gray-950 dark:text-white")
-                .child(h1("Flopcards"))
+                .class("p-8 grid place-items-center items-start gap-8 bg-neutral")
+                .child(h1("flopcards"))
                 .child(subject_menu())
-                .child(set_list(example_sets()))
-                .child(components::fab("create", "create")),
+                .child(set_list(Vec::new()))
+                .child(components::fab_dropdown(
+                    "create",
+                    "create",
+                    ["set", "folder"].into_iter().map(|item| {
+                        components::button_with_icon(format!("create-{item}"), item, item)
+                    }),
+                )),
         )
-        .response_ok()
+}
+
+fn sets_view(request: Request<hyper::body::Incoming>) -> Section {
+    let query: HashMap<String, String> = request
+        .uri()
+        .query()
+        .map(|v| {
+            url::form_urlencoded::parse(v.as_bytes())
+                .into_owned()
+                .collect()
+        })
+        .unwrap_or_default();
+    let subject = query
+        .get("subject")
+        .unwrap_or_else(|| todo!("400: malformed request 3"))
+        .parse::<Subject>()
+        .unwrap_or_else(|_| todo!("400: malformed request 4"));
+    set_list(example_sets(subject))
 }
 
 async fn router(
@@ -165,10 +228,10 @@ async fn router(
     match *request.method() {
         Method::GET => {
             if path == "/" {
-                index(request).await
+                index(request).response_ok()
             } else if let Some(asset) = path.strip_prefix("/assets/") {
-                let bytes =
-                    fs::read(format!("/{}/assets/{asset}", env!("CARGO_MANIFEST_DIR"))).unwrap();
+                let bytes = fs::read(format!("/{}/assets/{asset}", env!("CARGO_MANIFEST_DIR")))
+                    .unwrap_or_else(|_| todo!("404"));
                 let content_type = match asset.split_once(".").expect("no mime type").1 {
                     "svg" => "image/svg+xml; charset=utf-8",
                     "jpg" | "jpeg" => "image/jpeg",
@@ -180,6 +243,11 @@ async fn router(
                     .body(Full::new(Bytes::from(bytes)))
                     .unwrap();
                 return Ok(response);
+            } else if let Some(path) = path.strip_prefix("/view/") {
+                match path {
+                    "sets" => sets_view(request).response_ok(),
+                    _ => todo!("404"),
+                }
             } else {
                 todo!("404")
             }
