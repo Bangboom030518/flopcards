@@ -32,6 +32,7 @@ pub fn fab(id: impl Display, logo: impl Display) -> Button {
 
 pub fn button_with_icon(id: impl Display, icon: impl Display, text: impl Display) -> Button {
     button(id)
+        .class("btn")
         .child(img(format!("/assets/{icon}.svg"), &text).size(24, 24))
         .child(p(text))
 }
@@ -43,14 +44,14 @@ pub fn fab_dropdown(
 ) -> Div {
     div()
         .class("fixed bottom-8 right-8 flex flex-col-reverse items-center")
-        .child(fab(id, logo).class("peer"))
+        .child(fab(id, logo).class("peer sound-uhh"))
         .child(
             vertical_btn_group(
                 buttons
                     .into_iter()
-                    .map(|button| button.class("btn input-gray grid grid-cols-[auto,1fr]")),
+                    .map(|button| button.class("btn input-gray grid grid-cols-[auto,1fr] sound-open")),
             )
-            .class("opacity-0 peer-focus:opacity-100 focus-within:opacity-100 pointer-events-none peer-focus:pointer-events-auto focus-within:pointer-events-auto transition duration-input"),
+            .class("opacity-0 peer-focus:opacity-100 focus-within:opacity-100 scale-0 peer-focus:scale-100 focus-within:scale-100 origin-bottom transition duration-input"),
         )
 }
 

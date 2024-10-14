@@ -7,13 +7,13 @@ use hyper::service::service_fn;
 use hyper::{Request, Response};
 use hyper_util::rt::TokioIo;
 use itertools::Itertools;
+use sqlx::MySqlPool;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::fs;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use tokio::net::TcpListener;
-use url::Url;
 
 mod components;
 
@@ -126,7 +126,7 @@ impl Set {
 fn subject_menu() -> Menu {
     components::horizontal_btn_group(Subject::all().map(|subject| {
         button(format!("subject-{}", subject.id()))
-            .class(format!("btn input-{}", subject.color()))
+            .class(format!("btn input-{} sound-mmm", subject.color()))
             .hx_get(format!("/view/sets?subject={}", subject.id()))
             .hx_target("#setlist")
             .hx_swap("outerHTML swap:200ms")
@@ -134,6 +134,26 @@ fn subject_menu() -> Menu {
             .child(p(subject.name()))
     }))
     .class("w-fit")
+}
+
+fn create_set_popup() -> Dialog {
+    dialog()
+        .id("create-set-dialog")
+        .class("card w-3/4 inset-0 m-auto")
+        .child(h2("Create Set"))
+        .child(
+            form(FormMethod::Post, "create_set")
+                .class("w-full grid gap-4")
+                .child(components::text_input(
+                    "set-title",
+                    "Set Title",
+                    InputType::Text,
+                ))
+                .child(
+                    components::button_with_icon("create-set", "create", "create set")
+                        .class("input-accent"),
+                ),
+        )
 }
 
 #[deprecated = "data is example"]
@@ -169,7 +189,10 @@ fn set_list(sets: Vec<Set>) -> Section {
                         )
                         .child(
                             a(format!("/sets/{}", set.id))
-                                .class("btn input-accent w-full")
+                                .class(format!(
+                                    "btn input-{} w-full sound-yes",
+                                    set.subject.color()
+                                ))
                                 .child(img("/assets/study.svg", "study").size(24, 24))
                                 .child(p("study")),
                         )
@@ -192,14 +215,22 @@ fn index(request: Request<hyper::body::Incoming>) -> Html {
                 .class("p-8 grid place-items-center items-start gap-8 bg-neutral")
                 .child(h1("flopcards"))
                 .child(subject_menu())
-                .child(set_list(Vec::new()))
+                .child(set_list(Vec::new()).child(
+                    p("click on a subject to view sets...").class("col-span-full text-center"),
+                ))
                 .child(components::fab_dropdown(
                     "create",
                     "create",
                     ["set", "folder"].into_iter().map(|item| {
-                        components::button_with_icon(format!("create-{item}"), item, item)
+                        components::button_with_icon(format!("create-{item}"), item, item).onclick(
+                            format!(
+                                "javascript:document.getElementById('create-{item}-dialog').open()"
+                            ),
+                        )
                     }),
-                )),
+                ))
+                .child(create_set_popup())
+                .script(include_str!("../script.js")),
         )
 }
 
@@ -236,6 +267,7 @@ async fn router(
                     "svg" => "image/svg+xml; charset=utf-8",
                     "jpg" | "jpeg" => "image/jpeg",
                     "min.js" | "js" => "text/javascript",
+                    "mp3" => "audio/mpeg",
                     file_extension => todo!("handle '.{file_extension}' files"),
                 };
                 let response = http::Response::builder()
@@ -258,6 +290,7 @@ async fn router(
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let pool = MySqlPool::connect(include_str!("../DATABASE_URL")).await?;
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
 
     // We create a TcpListener and bind it to 127.0.0.1:3000
