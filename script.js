@@ -1,11 +1,21 @@
 function applyEvents() {
-  for (const sound of ["open", "mmm", "uhh", "yes"]) {
+  for (const sound of [
+    "open",
+    "mmm",
+    "uhh",
+    "yes",
+    "spanish",
+    "geography",
+    "maths",
+    "further-maths",
+    "other",
+  ]) {
     for (const element of document.querySelectorAll(`.sound-${sound}`)) {
       if (element.dataset[`${sound}SoundApplied`]) continue;
       element.addEventListener("click", () =>
         new Audio(`/assets/${sound}.mp3`).play(),
       );
-      element.dataset[`${sound}SoundApplied`] = "true";
+      element.dataset[`${sound.replace(/-/g, "")}SoundApplied`] = "true";
     }
   }
 }

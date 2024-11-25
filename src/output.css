@@ -849,6 +849,10 @@ h3 {
   visibility: collapse;
 }
 
+.static {
+  position: static;
+}
+
 .fixed {
   position: fixed;
 }
@@ -962,10 +966,6 @@ h3 {
   width: 5rem;
 }
 
-.w-3\/4 {
-  width: 75%;
-}
-
 .w-\[7\.5ch\] {
   width: 7.5ch;
 }
@@ -981,6 +981,10 @@ h3 {
 
 .w-full {
   width: 100%;
+}
+
+.max-w-\[60ch\] {
+  max-width: 60ch;
 }
 
 .border-collapse {
@@ -1174,6 +1178,10 @@ h3 {
 
 .font-medium {
   font-weight: 500;
+}
+
+.lowercase {
+  text-transform: lowercase;
 }
 
 .underline {

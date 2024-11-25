@@ -1,11 +1,14 @@
 use html_builder::prelude::*;
+use itertools::Itertools;
 use std::fmt::Display;
+
+use crate::data::{Set, Subject};
 
 pub fn text_input(id: impl Display, label_text: impl Display, kind: InputType) -> Div {
     div().class("input text-input input-gray text-left w-full rounded-t border-b-input border-black dark:border-white overflow-visible")
         .child(input()
                .class("bg-transparent text-left ml-3 text-lg inset-0 margin-auto absolute font-medium outline-none peer w-[calc(100%-1.5rem)] dark:autofill:text-white autofill:text-black no-placeholder")
-               .r#type(kind).placeholder(&label_text).id(&id))
+               .r#type(kind).placeholder(&label_text).id(&id).name(&id))
         .child(label(&id).class("absolute left-0 w-full h-fit transition-all duration-input text-left ml-3 cursor-text bottom-1/2 translate-y-1/2 peer-typing:text-accent-600 peer-typing:text-xs peer-typing:translate-y-[-1em] peer-typing:font-bold").text(&label_text))
 }
 
@@ -71,4 +74,51 @@ pub fn vertical_btn_group(buttons: impl IntoIterator<Item = Button>) -> Menu {
             .map(|button| button.class("first:rounded-t-lg last:rounded-b-lg rounded-none w-full")),
     )
     .class("grid grid-flow-row gap-1")
+}
+
+pub fn set_list(sets: Vec<Set>) -> Section {
+    section()
+        .id("setlist")
+        .class("grid grid-cols-3 w-full gap-4 fade-out")
+        .children(
+            sets.into_iter()
+                .map(|set| {
+                    article()
+                        .class(format!("card w-full bg-{}-950", set.subject.color()))
+                        .child(h3(set.title))
+                        .child(
+                            div()
+                                .class("w-full flex justify-between")
+                                .child(p("69 cards"))
+                                .child(p(set.subject).class(format!(
+                                "rounded-full border border-black dark:border-white px-2 bg-{}-800",
+                                set.subject.color()
+                            ))),
+                        )
+                        .child(
+                            a(format!("/sets/{}", set.id))
+                                .class(format!(
+                                    "btn input-{} w-full sound-yes",
+                                    set.subject.color()
+                                ))
+                                .child(img("/assets/study.svg", "study").size(24, 24))
+                                .child(p("study")),
+                        )
+                })
+                .collect_vec(),
+        )
+}
+
+pub fn subject_menu() -> Menu {
+    // input-red input-orange input-yellow input-emerald input-purple
+    horizontal_btn_group(Subject::all().into_iter().map(|subject| {
+        button(format!("subject-{subject}"))
+            .class(format!("btn input-{} sound-{subject}", subject.color()))
+            .hx_get(format!("/view/sets?subject={subject}"))
+            .hx_target("#setlist")
+            .hx_swap("outerHTML swap:200ms")
+            .child(img(format!("/assets/{subject}.svg"), subject).size(24, 24))
+            .child(p(subject))
+    }))
+    .class("w-fit")
 }

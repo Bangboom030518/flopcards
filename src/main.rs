@@ -1,3 +1,4 @@
+use data::{Query, ResourceError, Set, Subject};
 use html_builder::prelude::*;
 use http::Method;
 use http_body_util::Full;
@@ -6,139 +7,49 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Request, Response};
 use hyper_util::rt::TokioIo;
-use itertools::Itertools;
-use sqlx::{Executor, MySqlPool};
-use std::collections::HashMap;
 use std::convert::Infallible;
 use std::fs;
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
 use tokio::net::TcpListener;
 
 mod components;
+mod data;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Subject {
-    id: String,
-    color: String,
+fn create_set_popup() -> Dialog {
+    dialog()
+        .class("bg-transparent max-w-[60ch] w-full inset-0 m-auto")
+        .id("create-set-dialog")
+        .child(
+            div().class("card inset-0").child(h2("Create Set")).child(
+                form(FormMethod::Post, "create-set")
+                    .class("w-full grid gap-4")
+                    .child(components::text_input(
+                        "set-title",
+                        "Set Title",
+                        InputType::Text,
+                    ))
+                    .child(
+                        components::button_with_icon("create-set", "create", "create set")
+                            .class("input-accent"),
+                    ),
+            ),
+        )
 }
-
-impl Subject {
-    fn name(&self) -> String {
-        self.id.replace("-", " ")
-    }
-
-    fn icon_path(&self) -> String {
-        format!("assets/{}.svg", self.id)
-    }
-
-    async fn fetch_from_id(id: &str) -> Self {
-        todo!("query subject")
-    }
-
-    async fn fetch_all(pool: &MySqlPool) -> Vec<Self> {
-        let rows = sqlx::query!("SELECT id, color FROM subject ORDER BY id")
-            .fetch_all(pool)
-            .await
-            .unwrap_or_else(|error| todo!("db error: {error}"));
-        // TODO: extract strings not Vec<u8>s
-        rows.into_iter()
-            .map(|record| Self {
-                id: String::from_utf8(record.id).unwrap(),
-                color: String::from_utf8(record.color).unwrap(),
-            })
-            .collect()
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Set {
-    pub name: String,
-    pub id: u32,
-    pub subject: Subject,
-    pub size: usize,
-}
-
-impl Set {
-    pub fn new(name: &str, id: u32, subject: Subject, size: usize) -> Self {
-        Self {
-            name: name.to_string(),
-            id,
-            subject,
-            size,
-        }
-    }
-
-    async fn fetch_all(pool: &MySqlPool, subject_id: &str) -> Vec<Self> {
-        todo!("query all sets")
-    }
-}
-
-fn subject_menu(subjects: Vec<Subject>) -> Menu {
+fn subject_menu() -> Menu {
     // input-red input-orange input-yellow input-emerald input-purple
-    components::horizontal_btn_group(subjects.into_iter().map(|subject| {
-        button(format!("subject-{}", subject.id))
-            .class(format!("btn input-{} sound-mmm", subject.color))
-            .hx_get(format!("/view/sets?subject={}", subject.id))
+    components::horizontal_btn_group(Subject::all().into_iter().map(|subject| {
+        button(format!("subject-{subject}"))
+            .class(format!("btn input-{} sound-{subject}", subject.color()))
+            .hx_get(format!("/view/sets?subject={subject}"))
             .hx_target("#setlist")
             .hx_swap("outerHTML swap:200ms")
-            .child(img(subject.icon_path(), subject.name()).size(24, 24))
-            .child(p(subject.name()))
+            .child(img(format!("/assets/{subject}.svg"), subject).size(24, 24))
+            .child(p(subject))
     }))
     .class("w-fit")
 }
 
-fn create_set_popup() -> Dialog {
-    dialog()
-        .id("create-set-dialog")
-        .class("card w-3/4 inset-0 m-auto")
-        .child(h2("Create Set"))
-        .child(
-            form(FormMethod::Post, "create_set")
-                .class("w-full grid gap-4")
-                .child(components::text_input(
-                    "set-title",
-                    "Set Title",
-                    InputType::Text,
-                ))
-                .child(
-                    components::button_with_icon("create-set", "create", "create set")
-                        .class("input-accent"),
-                ),
-        )
-}
-
-fn set_list(sets: Vec<Set>) -> Section {
-    section()
-        .id("setlist")
-        .class("grid grid-cols-3 w-full gap-4 fade-out")
-        .children(
-            sets.into_iter()
-                .map(|set| {
-                    article()
-                        .class(format!("card w-full bg-{}-950", set.subject.color))
-                        .child(h3(set.name))
-                        .child(
-                            div()
-                                .class("w-full flex justify-between")
-                                .child(p(format!("{} cards", set.size)))
-                                .child(p(set.subject.name()).class(format!(
-                                "rounded-full border border-black dark:border-white px-2 bg-{}-800",
-                                set.subject.color
-                            ))),
-                        )
-                        .child(
-                            a(format!("/sets/{}", set.id))
-                                .class(format!("btn input-{} w-full sound-yes", set.subject.color))
-                                .child(img("/assets/study.svg", "study").size(24, 24))
-                                .child(p("study")),
-                        )
-                })
-                .collect_vec(),
-        )
-}
-
-async fn index(request: Request<hyper::body::Incoming>, pool: &MySqlPool) -> Html {
+async fn index(request: Request<hyper::body::Incoming>) -> Html {
     html("en")
         .child(
             head()
@@ -151,8 +62,8 @@ async fn index(request: Request<hyper::body::Incoming>, pool: &MySqlPool) -> Htm
             body()
                 .class("p-8 grid place-items-center items-start gap-8 bg-neutral")
                 .child(h1("flopcards"))
-                .child(subject_menu(Subject::fetch_all(pool).await))
-                .child(set_list(Vec::new()).child(
+                .child(components::subject_menu())
+                .child(components::set_list(Vec::new()).child(
                     p("click on a subject to view sets...").class("col-span-full text-center"),
                 ))
                 .child(components::fab_dropdown(
@@ -161,7 +72,7 @@ async fn index(request: Request<hyper::body::Incoming>, pool: &MySqlPool) -> Htm
                     ["set", "folder"].into_iter().map(|item| {
                         components::button_with_icon(format!("create-{item}"), item, item).onclick(
                             format!(
-                                "javascript:document.getElementById('create-{item}-dialog').open()"
+                                "javascript:document.getElementById('create-{item}-dialog').show()"
                             ),
                         )
                     }),
@@ -171,31 +82,21 @@ async fn index(request: Request<hyper::body::Incoming>, pool: &MySqlPool) -> Htm
         )
 }
 
-async fn sets_view(request: Request<hyper::body::Incoming>, pool: &MySqlPool) -> Section {
-    let query: HashMap<String, String> = request
-        .uri()
-        .query()
-        .map(|v| {
-            url::form_urlencoded::parse(v.as_bytes())
-                .into_owned()
-                .collect()
-        })
-        .unwrap_or_default();
-    let subject = query
-        .get("subject")
-        .unwrap_or_else(|| todo!("400: malformed request"));
-    set_list(Set::fetch_all(pool, subject).await)
+async fn sets_view(request: Request<hyper::body::Incoming>) -> Result<Section, ResourceError> {
+    let request = &request;
+    let query = Query::from_request(request);
+    let subject = query.get("subject")?;
+    Set::fetch_all(&subject).await.map(components::set_list)
 }
 
 async fn router(
     request: Request<hyper::body::Incoming>,
-    pool: &MySqlPool,
 ) -> Result<Response<Full<Bytes>>, Infallible> {
     let path = request.uri().path();
     match *request.method() {
         Method::GET => {
             if path == "/" {
-                index(request, pool).await.response_ok()
+                index(request).await.response_ok()
             } else if let Some(asset) = path.strip_prefix("/assets/") {
                 let bytes = fs::read(format!("/{}/assets/{asset}", env!("CARGO_MANIFEST_DIR")))
                     .unwrap_or_else(|_| todo!("404"));
@@ -213,9 +114,21 @@ async fn router(
                 return Ok(response);
             } else if let Some(path) = path.strip_prefix("/view/") {
                 match path {
-                    "sets" => sets_view(request, pool).await.response_ok(),
+                    "sets" => sets_view(request)
+                        .await
+                        .unwrap_or_else(|err| todo!("handle me: {err:?}"))
+                        .response_ok(),
                     _ => todo!("404"),
                 }
+            } else {
+                todo!("404")
+            }
+        }
+        Method::POST => {
+            if path == "/create-set" {
+                Ok(create_set(request)
+                    .await
+                    .unwrap_or_else(|err| todo!("handle me: {err}")))
             } else {
                 todo!("404")
             }
@@ -224,9 +137,37 @@ async fn router(
     }
 }
 
+async fn create_set(
+    request: Request<hyper::body::Incoming>,
+) -> Result<Response<Full<Bytes>>, ResourceError> {
+    let body = data::body_to_string(request).await?;
+    let client = reqwest::Client::new();
+    let path = client
+        .post(format!(
+            "{}?kind=set&{body}",
+            include_str!("../DATABASE_URL")
+        ))
+        .header(http::header::CONTENT_LENGTH, 0)
+        .send()
+        .await?
+        .error_for_status()?
+        .text()
+        .await?;
+    let redirect_url = format!("/sets/{path}");
+    let response = http::Response::builder()
+        .header(http::header::CONTENT_TYPE, "text/html")
+        .header(http::header::LOCATION, &redirect_url)
+        .status(303)
+        .body(Full::new(Bytes::from(format!(
+            "Redirecting to <a href='{redirect_url}'>{redirect_url}</a>"
+        ))))
+        .unwrap();
+
+    Ok(response)
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let pool = Arc::new(MySqlPool::connect(include_str!("../DATABASE_URL")).await?);
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
 
     // We create a TcpListener and bind it to 127.0.0.1:3000
@@ -239,12 +180,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // Use an adapter to access something implementing `tokio::io` traits as if they implement
         // `hyper::rt` IO traits.
         let io = TokioIo::new(stream);
-        let pool = Arc::clone(&pool);
         // Spawn a tokio task to serve multiple connections concurrently
         tokio::task::spawn(async move {
             // Finally, we bind the incoming connection to our `hello` service
             if let Err(err) = http1::Builder::new()
-                .serve_connection(io, service_fn(|request| router(request, &pool)))
+                .serve_connection(io, service_fn(router))
                 .await
             {
                 eprintln!("Error serving connection: {:?}", err);
