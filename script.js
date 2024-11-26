@@ -9,6 +9,7 @@ function applyEvents() {
     "maths",
     "further-maths",
     "other",
+    "stop-baby",
   ]) {
     for (const element of document.querySelectorAll(`.sound-${sound}`)) {
       if (element.dataset[`${sound}SoundApplied`]) continue;

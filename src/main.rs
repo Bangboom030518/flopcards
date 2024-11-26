@@ -1,4 +1,5 @@
-use data::{Query, ResourceError, Set, Subject};
+// htmx-swapping
+use data::{Query, ResourceError, Set};
 use html_builder::prelude::*;
 use http::Method;
 use http_body_util::Full;
@@ -8,6 +9,7 @@ use hyper::service::service_fn;
 use hyper::{Request, Response};
 use hyper_util::rt::TokioIo;
 use std::convert::Infallible;
+use std::fmt::Display;
 use std::fs;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
@@ -15,38 +17,45 @@ use tokio::net::TcpListener;
 mod components;
 mod data;
 
-fn create_set_popup() -> Dialog {
+fn create_set_popup(subject: impl Display) -> Dialog {
     dialog()
         .class("bg-transparent max-w-[60ch] w-full inset-0 m-auto")
         .id("create-set-dialog")
         .child(
-            div().class("card inset-0").child(h2("Create Set")).child(
-                form(FormMethod::Post, "create-set")
-                    .class("w-full grid gap-4")
-                    .child(components::text_input(
-                        "set-title",
-                        "Set Title",
-                        InputType::Text,
-                    ))
-                    .child(
-                        components::button_with_icon("create-set", "create", "create set")
-                            .class("input-accent"),
-                    ),
-            ),
+            div()
+                .class("card inset-0 relative")
+                .child(
+                    button("close-popup")
+                        .class("w-[5ch] h-[5ch] top-2 right-2 absolute sound-stop-baby")
+                        .hx_on("click", "this.parentElement.parentElement.close()")
+                        .child(
+                            img("/assets/close.svg", "close")
+                                .size(24, 24)
+                                .class("w-full h-full"),
+                        ),
+                )
+                .child(h2("create set"))
+                .child(
+                    form(FormMethod::Post, "create-set")
+                        .class("w-full grid gap-4")
+                        .child(components::text_input(
+                            "set-title",
+                            "set title",
+                            InputType::Text,
+                        ))
+                        .child(
+                            input()
+                                .r#type("hidden")
+                                .name("subject")
+                                .id("subject-input")
+                                .value(subject),
+                        )
+                        .child(
+                            components::button_with_icon("create-set", "create", "create set")
+                                .class("input-accent"),
+                        ),
+                ),
         )
-}
-fn subject_menu() -> Menu {
-    // input-red input-orange input-yellow input-emerald input-purple
-    components::horizontal_btn_group(Subject::all().into_iter().map(|subject| {
-        button(format!("subject-{subject}"))
-            .class(format!("btn input-{} sound-{subject}", subject.color()))
-            .hx_get(format!("/view/sets?subject={subject}"))
-            .hx_target("#setlist")
-            .hx_swap("outerHTML swap:200ms")
-            .child(img(format!("/assets/{subject}.svg"), subject).size(24, 24))
-            .child(p(subject))
-    }))
-    .class("w-fit")
 }
 
 async fn index(request: Request<hyper::body::Incoming>) -> Html {
@@ -77,7 +86,8 @@ async fn index(request: Request<hyper::body::Incoming>) -> Html {
                         )
                     }),
                 ))
-                .child(create_set_popup())
+                .child(create_set_popup(""))
+                .child(components::loading_animation())
                 .script(include_str!("../script.js")),
         )
 }
@@ -97,6 +107,14 @@ async fn router(
         Method::GET => {
             if path == "/" {
                 index(request).await.response_ok()
+            } else if path == "/favicon.ico" {
+                let path = format!("/{}/assets/favicon.ico", env!("CARGO_MANIFEST_DIR"));
+                let bytes = fs::read(path).unwrap_or_else(|_| todo!("404"));
+                let response = http::Response::builder()
+                    .header(http::header::CONTENT_TYPE, "image/x-icon")
+                    .body(Full::new(Bytes::from(bytes)))
+                    .unwrap();
+                return Ok(response);
             } else if let Some(asset) = path.strip_prefix("/assets/") {
                 let bytes = fs::read(format!("/{}/assets/{asset}", env!("CARGO_MANIFEST_DIR")))
                     .unwrap_or_else(|_| todo!("404"));
@@ -105,6 +123,7 @@ async fn router(
                     "jpg" | "jpeg" => "image/jpeg",
                     "min.js" | "js" => "text/javascript",
                     "mp3" => "audio/mpeg",
+                    "webp" => "image/webp",
                     file_extension => todo!("handle '.{file_extension}' files"),
                 };
                 let response = http::Response::builder()

@@ -76,6 +76,19 @@ pub fn vertical_btn_group(buttons: impl IntoIterator<Item = Button>) -> Menu {
     .class("grid grid-flow-row gap-1")
 }
 
+pub fn loading_animation() -> Div {
+    // TODO: generate funny random loading text
+    div()
+        .id("loading-animation")
+        .class("card fixed w-[20ch] h-fit inset-0 m-auto text-center hidden")
+        .child(
+            img("assets/logo.webp", "flopcards logo")
+                .size(1080, 1080)
+                .class("w-full h-auto animate-spin"),
+        )
+        .child(h2("loading..."))
+}
+
 pub fn set_list(sets: Vec<Set>) -> Section {
     section()
         .id("setlist")
@@ -85,7 +98,7 @@ pub fn set_list(sets: Vec<Set>) -> Section {
                 .map(|set| {
                     article()
                         .class(format!("card w-full bg-{}-950", set.subject.color()))
-                        .child(h3(set.title))
+                        .child(h3(&set.title))
                         .child(
                             div()
                                 .class("w-full flex justify-between")
@@ -96,13 +109,26 @@ pub fn set_list(sets: Vec<Set>) -> Section {
                             ))),
                         )
                         .child(
-                            a(format!("/sets/{}", set.id))
-                                .class(format!(
-                                    "btn input-{} w-full sound-yes",
-                                    set.subject.color()
-                                ))
-                                .child(img("/assets/study.svg", "study").size(24, 24))
-                                .child(p("study")),
+                            div()
+                                .class("grid grid-flow-col w-full gap-2")
+                                .child(
+                                    a(format!("/sets/{}", set.path()))
+                                        .class(format!(
+                                            "btn input-{} w-full sound-yes",
+                                            set.subject.color()
+                                        ))
+                                        .child(img("/assets/study.svg", "study").size(24, 24))
+                                        .child(p("study")),
+                                )
+                                .child(
+                                    a(format!("/sets/{}/edit", set.path()))
+                                        .class(format!(
+                                            "btn input-{} w-full sound-yes",
+                                            set.subject.color()
+                                        ))
+                                        .child(img("/assets/edit.svg", "edit").size(24, 24))
+                                        .child(p("edit")),
+                                ),
                         )
                 })
                 .collect_vec(),
@@ -115,7 +141,16 @@ pub fn subject_menu() -> Menu {
         button(format!("subject-{subject}"))
             .class(format!("btn input-{} sound-{subject}", subject.color()))
             .hx_get(format!("/view/sets?subject={subject}"))
+            .hx_push_url(format!("?subject={subject}"))
             .hx_target("#setlist")
+            .hx_on(
+                "htmx:before-request",
+                format!("document.getElementById('loading-animation').style.display='block';document.getElementById('subject-input').value='{subject}'"),
+            )
+            .hx_on(
+                "htmx:after-request",
+                format!("document.getElementById('loading-animation').style.display='none';new Audio('assets/moan.mp3').play()"),
+            )
             .hx_swap("outerHTML swap:200ms")
             .child(img(format!("/assets/{subject}.svg"), subject).size(24, 24))
             .child(p(subject))

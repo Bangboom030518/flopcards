@@ -86,6 +86,15 @@ pub struct Set {
 }
 
 impl Set {
+    pub fn path(&self) -> String {
+        let id = if self.parent.is_empty() {
+            self.id.clone()
+        } else {
+            format!("{}/{}", self.parent, self.id)
+        };
+        format!("{}/{id}", self.subject)
+    }
+
     pub async fn fetch_all(subject: &str) -> Result<Vec<Self>, ResourceError> {
         let response = reqwest::get(format!(
             "{}?subject={subject}&kind=allSets",
