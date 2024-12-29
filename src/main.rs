@@ -11,9 +11,11 @@ use hyper_util::rt::TokioIo;
 use std::convert::Infallible;
 use std::fmt::Display;
 use std::fs;
+use std::future::Future;
 use std::net::SocketAddr;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 use tokio::net::TcpListener;
-
 mod components;
 mod data;
 
@@ -184,31 +186,57 @@ async fn create_set(
 
     Ok(response)
 }
+struct App;
 
-// #[tokio::main]
-#[shuttle_runtime::main]
-async fn main() -> Result<(), shuttle_runtime::Error> {
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+impl App {
+    async fn run(self, addr: std::net::SocketAddr) -> Result<(), shuttle_runtime::Error> {
+        let listener = TcpListener::bind(addr).await?;
+        // We start a loop to continuously accept incoming connections
+        loop {
+            let (stream, _) = listener.accept().await?;
 
-    // We create a TcpListener and bind it to 127.0.0.1:3000
-    let listener = TcpListener::bind(addr).await?;
-    println!("serving on http://localhost:3000");
-    // We start a loop to continuously accept incoming connections
-    loop {
-        let (stream, _) = listener.accept().await?;
-
-        // Use an adapter to access something implementing `tokio::io` traits as if they implement
-        // `hyper::rt` IO traits.
-        let io = TokioIo::new(stream);
-        // Spawn a tokio task to serve multiple connections concurrently
-        tokio::task::spawn(async move {
-            // Finally, we bind the incoming connection to our `hello` service
-            if let Err(err) = http1::Builder::new()
-                .serve_connection(io, service_fn(router))
-                .await
-            {
-                eprintln!("Error serving connection: {:?}", err);
-            }
-        });
+            // Use an adapter to access something implementing `tokio::io` traits as if they implement
+            // `hyper::rt` IO traits.
+            let io = TokioIo::new(stream);
+            // Spawn a tokio task to serve multiple connections concurrently
+            tokio::task::spawn(async move {
+                // Finally, we bind the incoming connection to our `hello` service
+                if let Err(err) = http1::Builder::new()
+                    .serve_connection(io, service_fn(router))
+                    .await
+                {
+                    eprintln!("Error serving connection: {:?}", err);
+                }
+            });
+        }
     }
+}
+
+impl shuttle_runtime::Service for App {
+    fn bind<'async_trait>(
+        self,
+        addr: SocketAddr,
+    ) -> ::core::pin::Pin<
+        Box<
+            dyn ::core::future::Future<Output = Result<(), shuttle_runtime::Error>>
+                + ::core::marker::Send
+                + 'async_trait,
+        >,
+    >
+    where
+        Self: 'async_trait,
+    {
+        Box::pin(self.run(addr))
+    }
+}
+
+#[shuttle_runtime::main]
+async fn main(
+    #[shuttle_turso::Turso(
+        addr = "libsql://flashcards-charliec.turso.io",
+        token = "{secrets.DB_TURSO_TOKEN}"
+    )]
+    client: libsql::Connection,
+) -> Result<App, shuttle_runtime::Error> {
+    Ok(App)
 }
