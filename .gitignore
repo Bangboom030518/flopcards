@@ -2,3 +2,6 @@ target
 DATABASE_URL
 node_modules
 .env
+/target
+.shuttle*
+Secrets*.toml

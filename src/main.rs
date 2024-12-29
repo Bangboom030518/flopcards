@@ -185,8 +185,9 @@ async fn create_set(
     Ok(response)
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+// #[tokio::main]
+#[shuttle_runtime::main]
+async fn main() -> Result<(), shuttle_runtime::Error> {
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
 
     // We create a TcpListener and bind it to 127.0.0.1:3000
