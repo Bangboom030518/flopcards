@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+async-recursion = "1.1.1"
 futures = "0.3"
 # html-builder = { git = "https://github.com/AlanRandon/html-builder.git" }
 html-builder = { path = "../html-builder" }
@@ -13,8 +14,6 @@ hyper = { version = "1.4", features = ["full"] }
 hyper-util = { version = "0.1", features = ["full"] }
 itertools = "0.13"
 libsql = "0.6"
-querystring = "1.1"
-regex = "1.11.1"
 reqwest = { version = "0.12", features = [
 	"rustls-tls",
 ], default-features = false }

@@ -1,4 +1,5 @@
 // htmx-swapping
+#![warn(clippy::pedantic, clippy::nursery, clippy::todo)]
 use data::{Query, ResourceError, Set, Subject};
 use html_builder::prelude::*;
 use http::Method;
@@ -8,7 +9,6 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Request, Response};
 use hyper_util::rt::TokioIo;
-use std::convert::Infallible;
 use std::fs;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -43,6 +43,7 @@ fn create_set_popup(subjects: &[Subject]) -> Dialog {
                             "set title",
                             InputType::Text,
                             true,
+                            None,
                         ))
                         .child(
                             textarea("description-input", "description")
@@ -69,6 +70,12 @@ async fn index(
     request: Request<hyper::body::Incoming>,
 ) -> libsql::Result<Html> {
     let subjects = Subject::fetch_all(connection).await?;
+    let query = Query::from_request(&request);
+    let sets = if let Ok(subject) = query.get("subject") {
+        Set::fetch_all(connection, &subject).await?
+    } else {
+        Vec::new()
+    };
     Ok(html("en")
         .child(
             head()
@@ -82,9 +89,7 @@ async fn index(
                 .class("p-8 grid place-items-center items-start gap-8 bg-neutral")
                 .child(h1("flopcards"))
                 .child(components::subject_menu(&subjects))
-                .child(components::set_list(Vec::new()).child(
-                    p("click on a subject to view sets...").class("col-span-full text-center"),
-                ))
+                .child(components::set_list(&sets))
                 .child(components::fab_dropdown(
                     "create",
                     "create",
@@ -110,34 +115,102 @@ async fn sets_view(
     let query = Query::from_request(request);
     let subject = query.get("subject")?;
     Ok(components::set_list(
-        Set::fetch_all(connection, &subject).await?,
+        &Set::fetch_all(connection, &subject).await?,
     ))
 }
 
+async fn set(connection: &libsql::Connection, path: &str) -> Result<Html, ResourceError> {
+    let set = Set::fetch_from_id(connection, path)
+        .await?
+        .unwrap_or_else(|| todo!("404"));
+    Ok(html("en")
+        .child(
+            head()
+                .template()
+                .style(include_str!("./output.css"))
+                .title(format!("{} - flopcards", set.title))
+                .raw_text("<script src='assets/htmx.min.js'></script>"),
+        )
+        .child(
+            body()
+                .class("p-8 grid place-items-center items-start gap-8 bg-neutral")
+                .child(h1(format!("{} cards", set.title)))
+                .script(include_str!("../script.js")),
+        ))
+}
+
+async fn edit_set(connection: &libsql::Connection, path: &str) -> Result<Html, ResourceError> {
+    let set = Set::fetch_from_id(connection, path)
+        .await?
+        .ok_or_else(|| ResourceError::NotFound(format!("set '{path}'")))?;
+
+    Ok(html("en")
+        .child(
+            head()
+                .template()
+                .style(include_str!("./output.css"))
+                .title(format!("edit {} - flopcards", set.title))
+                .raw_text("<script src='assets/htmx.min.js'></script>"),
+        )
+        .child(
+            body()
+                .class("p-8 grid place-items-center items-start gap-8 bg-neutral")
+                .child(h1(format!("edit {}", set.title)))
+                .child(
+                    fieldset()
+                        .class("w-full card grid gap-4")
+                        .child(h2("edit title and description").class("text-left"))
+                        .child(components::text_input(
+                            "set-title",
+                            "title",
+                            "set title",
+                            InputType::Text,
+                            true,
+                            Some(set.title),
+                        ))
+                        .child(
+                            textarea("description-input", "description")
+                                .text(&set.description)
+                                .placeholder("description")
+                                .class("text-black"),
+                        )
+                        .child(
+                            components::button_with_icon("save-set", "publish", "save set")
+                                .class("input-accent"),
+                        ),
+                )
+                .script(include_str!("../script.js")),
+        ))
+}
 async fn router(
-    connection: &libsql::Connection,
+    database: &libsql::Database,
     request: Request<hyper::body::Incoming>,
-) -> Result<Response<Full<Bytes>>, Infallible> {
+) -> Result<Response<Full<Bytes>>, ResourceError> {
+    let connection = database
+        .connect()
+        .unwrap_or_else(|err| todo!("db error: {err}"));
     let path = request.uri().path();
     match *request.method() {
         Method::GET => {
             if path == "/" {
-                index(connection, request)
+                index(&connection, request)
                     .await
                     .unwrap_or_else(|error| todo!("handle me: {error}"))
                     .response_ok()
             } else if path == "/favicon.ico" {
                 let path = format!("/{}/assets/favicon.ico", env!("CARGO_MANIFEST_DIR"));
-                let bytes = fs::read(path).unwrap_or_else(|_| todo!("404"));
+                let bytes = fs::read(path)
+                    .map_err(|_| ResourceError::NotFound("/favicon.ico".to_string()))?;
                 let response = http::Response::builder()
                     .header(http::header::CONTENT_TYPE, "image/x-icon")
                     .body(Full::new(Bytes::from(bytes)))
                     .unwrap();
                 return Ok(response);
             } else if let Some(asset) = path.strip_prefix("/assets/") {
-                let bytes = fs::read(format!("/{}/assets/{asset}", env!("CARGO_MANIFEST_DIR")))
-                    .unwrap_or_else(|_| todo!("404"));
-                let content_type = match asset.split_once(".").expect("no mime type").1 {
+                let path = format!("/assets/{asset}");
+                let bytes = fs::read(format!("/{}{path}", env!("CARGO_MANIFEST_DIR")))
+                    .map_err(|_| ResourceError::NotFound(path))?;
+                let content_type = match asset.split_once('.').expect("no mime type").1 {
                     "svg" => "image/svg+xml; charset=utf-8",
                     "jpg" | "jpeg" => "image/jpeg",
                     "min.js" | "js" => "text/javascript",
@@ -152,26 +225,25 @@ async fn router(
                 return Ok(response);
             } else if let Some(path) = path.strip_prefix("/view/") {
                 match path {
-                    "sets" => sets_view(connection, request)
-                        .await
-                        .unwrap_or_else(|err| todo!("handle me: {err:?}"))
-                        .response_ok(),
-                    _ => todo!("404"),
+                    "sets" => sets_view(&connection, request).await?.response_ok(),
+                    _ => Err(ResourceError::NotFound(format!("/view/{path}"))),
                 }
+            } else if let Some(path) = path.strip_prefix("/sets/") {
+                set(&connection, path).await?.response_ok()
+            } else if let Some(path) = path.strip_prefix("/edit-set/") {
+                edit_set(&connection, path).await?.response_ok()
             } else {
-                todo!("404")
+                Err(ResourceError::NotFound(path.to_string()))
             }
         }
         Method::POST => {
             if path == "/create-set" {
-                Ok(create_set(connection, request)
-                    .await
-                    .unwrap_or_else(|err| todo!("handle me: {err}")))
+                create_set(&connection, request).await
             } else {
-                todo!("404")
+                Err(ResourceError::NotFound(path.to_string()))
             }
         }
-        _ => todo!("404"),
+        _ => Err(ResourceError::NotFound(path.to_string())),
     }
 }
 
@@ -181,19 +253,16 @@ async fn create_set(
 ) -> Result<Response<Full<Bytes>>, ResourceError> {
     let body = data::body_to_string(request).await?;
     dbg!(&body);
-    let body = data::parse_query(&body);
-    let title = body.get("title").unwrap_or_else(|| todo!("missing param"));
-    let description = body
-        .get("description")
-        .unwrap_or_else(|| todo!("missing param"));
-    let subject = body
-        .get("subject")
-        .unwrap_or_else(|| todo!("missing param"));
+    let body = Query::from_str(&body);
+    let title = body.get("title")?;
+    let subject = body.get("subject")?;
+    let id = data::generate_set_id(connection, &format!("{subject}/{title}"), 10).await?;
+    let description = body.get("description")?;
     // TODO: handle full path
     let mut query = connection
         .query(
-            "INSERT INTO cardset (title, description, subject) VALUES (?1, ?2, ?3) RETURNING id;",
-            libsql::params![title.clone(), description.clone(), subject.clone()],
+            "INSERT INTO cardset (id, title, description, subject) VALUES (?1, ?2, ?3, ?4) RETURNING id;",
+            libsql::params![id, title.clone(), description.clone(), subject.clone()],
         )
         .await?;
     let path = query.next().await?.unwrap().get_str(0)?.to_string();
@@ -210,23 +279,23 @@ async fn create_set(
     Ok(response)
 }
 struct App {
-    connection: libsql::Connection,
+    database: libsql::Database,
 }
 
 impl App {
     async fn run(self, addr: std::net::SocketAddr) -> Result<(), shuttle_runtime::Error> {
         let listener = TcpListener::bind(addr).await?;
-        let connection = Arc::new(self.connection);
+        let database = Arc::new(self.database);
         loop {
             let (stream, _) = listener.accept().await?;
             let io = TokioIo::new(stream);
-            let connection = Arc::clone(&connection);
+            let database = Arc::clone(&database);
             tokio::task::spawn(async move {
                 if let Err(err) = http1::Builder::new()
-                    .serve_connection(io, service_fn(|request| router(&connection, request)))
+                    .serve_connection(io, service_fn(|request| router(&database, request)))
                     .await
                 {
-                    eprintln!("Error serving connection: {:?}", err);
+                    eprintln!("Error serving connection: {err:?}");
                 }
             });
         }
@@ -261,6 +330,6 @@ async fn main(
     .build()
     .await
     .unwrap();
-    let connection = database.connect().expect("failed to connect to database");
-    Ok(App { connection })
+
+    Ok(App { database })
 }

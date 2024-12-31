@@ -1,6 +1,6 @@
 use html_builder::prelude::*;
-use itertools::Itertools;
 use std::fmt::Display;
+use std::option::Option;
 
 use crate::data::{Set, Subject};
 
@@ -10,29 +10,16 @@ pub fn text_input(
     label_text: impl Display,
     kind: InputType,
     required: bool,
+    value: Option<String>,
 ) -> Div {
-    div().class("input text-input input-gray text-left w-full rounded-t border-b-input border-black dark:border-white overflow-visible")
-        .child(input()
+    let input = input()
                .class("bg-transparent text-left ml-3 text-lg inset-0 margin-auto absolute font-medium outline-none peer w-[calc(100%-1.5rem)] dark:autofill:text-white autofill:text-black no-placeholder")
                .r#type(kind)
                .set_required(required)
-               .placeholder(&label_text).id(&id).name(&name))
+               .placeholder(&label_text).id(&id).name(&name);
+    div().class("input text-input input-gray text-left w-full rounded-t border-b-input border-black dark:border-white overflow-visible")
+        .child(if let Some(value) = value {input.value(value)}else { input })
         .child(label(&id).class("absolute left-0 w-full h-fit transition-all duration-input text-left ml-3 cursor-text bottom-1/2 translate-y-1/2 peer-typing:text-accent-600 peer-typing:text-xs peer-typing:translate-y-[-1em] peer-typing:font-bold").text(&label_text))
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum InputStyle {
-    Accent,
-    Gray,
-}
-
-impl Display for InputStyle {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Gray => write!(f, "gray"),
-            Self::Accent => write!(f, "accent"),
-        }
-    }
 }
 
 pub fn fab(id: impl Display, logo: impl Display) -> Button {
@@ -97,50 +84,47 @@ pub fn loading_animation() -> Div {
         .child(h2("loading..."))
 }
 
-pub fn set_list(sets: Vec<Set>) -> Section {
-    section()
+pub fn set_list(sets: &[Set]) -> Section {
+    let section = section()
         .id("setlist")
-        .class("grid grid-cols-3 w-full gap-4 fade-out")
-        .children(
-            sets.into_iter()
-                .map(|set| {
-                    article()
-                        .class(format!("card w-full bg-{}-950", set.subject.color))
-                        .child(h3(&set.title))
-                        .child(
-                            div()
-                                .class("w-full flex justify-between")
-                                .child(p("69 cards"))
-                                .child(p(&set.subject.name).class(format!(
-                                "rounded-full border border-black dark:border-white px-2 bg-{}-800",
-                                set.subject.color
-                            ))),
-                        )
-                        .child(
-                            div()
-                                .class("grid grid-flow-col w-full gap-2")
-                                .child(
-                                    a(format!("/sets/{}", set.path()))
-                                        .class(format!(
-                                            "btn input-{} w-full sound-yes",
-                                            set.subject.color
-                                        ))
-                                        .child(img("/assets/study.svg", "study").size(24, 24))
-                                        .child(p("study")),
-                                )
-                                .child(
-                                    a(format!("/sets/{}/edit", set.path()))
-                                        .class(format!(
-                                            "btn input-{} w-full sound-yes",
-                                            set.subject.color
-                                        ))
-                                        .child(img("/assets/edit.svg", "edit").size(24, 24))
-                                        .child(p("edit")),
-                                ),
-                        )
-                })
-                .collect_vec(),
+        .class("grid grid-cols-3 w-full gap-4 fade-out");
+    if sets.is_empty() {
+        section.child(
+            p("i couldn't find any sets (where it's at?)").class("col-span-full text-center"),
         )
+    } else {
+        section.children(sets.iter().map(|set| {
+            article()
+                .class(format!("card w-full bg-{}-950", set.subject.color))
+                .child(h3(&set.title))
+                .child(p(&set.description))
+                .child(
+                    div()
+                        .class("w-full flex justify-between")
+                        .child(p("69 cards"))
+                        .child(p(&set.subject.name).class(format!(
+                            "rounded-full border border-black dark:border-white px-2 bg-{}-800",
+                            set.subject.color
+                        ))),
+                )
+                .child(
+                    div()
+                        .class("grid grid-flow-col w-full gap-2")
+                        .child(
+                            a(format!("/sets/{}", set.id))
+                                .class(format!("btn input-{} w-full sound-yes", set.subject.color))
+                                .child(img("/assets/study.svg", "study").size(24, 24))
+                                .child(p("study")),
+                        )
+                        .child(
+                            a(format!("/edit-set/{}", set.id))
+                                .class(format!("btn input-{} w-full sound-yes", set.subject.color))
+                                .child(img("/assets/edit.svg", "edit").size(24, 24))
+                                .child(p("edit")),
+                        ),
+                )
+        }))
+    }
 }
 
 pub fn subject_menu(subjects: &[Subject]) -> Menu {
@@ -157,11 +141,11 @@ pub fn subject_menu(subjects: &[Subject]) -> Menu {
                 )
                 .hx_on(
                     "htmx:after-request",
-                    format!("document.getElementById('loading-animation').style.display='none';new Audio('assets/moan.mp3').play()"),
+                    "document.getElementById('loading-animation').style.display='none';new Audio('assets/moan.mp3').play()",
                 )
                 .hx_swap("outerHTML swap:200ms")
-                .child(img(format!("/assets/{id}.svg"), &name).size(24, 24))
-                .child(p(&name))
+                .child(img(format!("/assets/{id}.svg"), name).size(24, 24))
+                .child(p(name))
         }))
         .class("w-fit")
 }
