@@ -1,5 +1,5 @@
 // htmx-swapping
-use data::{Query, ResourceError, Set};
+use data::{Query, ResourceError, Set, Subject};
 use html_builder::prelude::*;
 use http::Method;
 use http_body_util::Full;
@@ -9,17 +9,14 @@ use hyper::service::service_fn;
 use hyper::{Request, Response};
 use hyper_util::rt::TokioIo;
 use std::convert::Infallible;
-use std::fmt::Display;
 use std::fs;
-use std::future::Future;
 use std::net::SocketAddr;
-use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::sync::Arc;
 use tokio::net::TcpListener;
 mod components;
 mod data;
 
-fn create_set_popup(subject: impl Display) -> Dialog {
+fn create_set_popup(subjects: &[Subject]) -> Dialog {
     dialog()
         .class("bg-transparent max-w-[60ch] w-full inset-0 m-auto")
         .id("create-set-dialog")
@@ -42,15 +39,22 @@ fn create_set_popup(subject: impl Display) -> Dialog {
                         .class("w-full grid gap-4")
                         .child(components::text_input(
                             "set-title",
+                            "title",
                             "set title",
                             InputType::Text,
+                            true,
                         ))
                         .child(
-                            input()
-                                .r#type("hidden")
-                                .name("subject")
-                                .id("subject-input")
-                                .value(subject),
+                            textarea("description-input", "description")
+                                .placeholder("description")
+                                .class("text-black"),
+                        )
+                        .child(
+                            select("subject-input", "subject")
+                                .options(
+                                    subjects.iter().map(|subject| (&subject.name, &subject.id)),
+                                )
+                                .class("text-black"),
                         )
                         .child(
                             components::button_with_icon("create-set", "create", "create set")
@@ -60,8 +64,12 @@ fn create_set_popup(subject: impl Display) -> Dialog {
         )
 }
 
-async fn index(request: Request<hyper::body::Incoming>) -> Html {
-    html("en")
+async fn index(
+    connection: &libsql::Connection,
+    request: Request<hyper::body::Incoming>,
+) -> libsql::Result<Html> {
+    let subjects = Subject::fetch_all(connection).await?;
+    Ok(html("en")
         .child(
             head()
                 .template()
@@ -73,7 +81,7 @@ async fn index(request: Request<hyper::body::Incoming>) -> Html {
             body()
                 .class("p-8 grid place-items-center items-start gap-8 bg-neutral")
                 .child(h1("flopcards"))
-                .child(components::subject_menu())
+                .child(components::subject_menu(&subjects))
                 .child(components::set_list(Vec::new()).child(
                     p("click on a subject to view sets...").class("col-span-full text-center"),
                 ))
@@ -88,27 +96,36 @@ async fn index(request: Request<hyper::body::Incoming>) -> Html {
                         )
                     }),
                 ))
-                .child(create_set_popup(""))
+                .child(create_set_popup(&subjects))
                 .child(components::loading_animation())
                 .script(include_str!("../script.js")),
-        )
+        ))
 }
 
-async fn sets_view(request: Request<hyper::body::Incoming>) -> Result<Section, ResourceError> {
+async fn sets_view(
+    connection: &libsql::Connection,
+    request: Request<hyper::body::Incoming>,
+) -> Result<Section, ResourceError> {
     let request = &request;
     let query = Query::from_request(request);
     let subject = query.get("subject")?;
-    Set::fetch_all(&subject).await.map(components::set_list)
+    Ok(components::set_list(
+        Set::fetch_all(connection, &subject).await?,
+    ))
 }
 
 async fn router(
+    connection: &libsql::Connection,
     request: Request<hyper::body::Incoming>,
 ) -> Result<Response<Full<Bytes>>, Infallible> {
     let path = request.uri().path();
     match *request.method() {
         Method::GET => {
             if path == "/" {
-                index(request).await.response_ok()
+                index(connection, request)
+                    .await
+                    .unwrap_or_else(|error| todo!("handle me: {error}"))
+                    .response_ok()
             } else if path == "/favicon.ico" {
                 let path = format!("/{}/assets/favicon.ico", env!("CARGO_MANIFEST_DIR"));
                 let bytes = fs::read(path).unwrap_or_else(|_| todo!("404"));
@@ -135,7 +152,7 @@ async fn router(
                 return Ok(response);
             } else if let Some(path) = path.strip_prefix("/view/") {
                 match path {
-                    "sets" => sets_view(request)
+                    "sets" => sets_view(connection, request)
                         .await
                         .unwrap_or_else(|err| todo!("handle me: {err:?}"))
                         .response_ok(),
@@ -147,7 +164,7 @@ async fn router(
         }
         Method::POST => {
             if path == "/create-set" {
-                Ok(create_set(request)
+                Ok(create_set(connection, request)
                     .await
                     .unwrap_or_else(|err| todo!("handle me: {err}")))
             } else {
@@ -159,21 +176,27 @@ async fn router(
 }
 
 async fn create_set(
+    connection: &libsql::Connection,
     request: Request<hyper::body::Incoming>,
 ) -> Result<Response<Full<Bytes>>, ResourceError> {
     let body = data::body_to_string(request).await?;
-    let client = reqwest::Client::new();
-    let path = client
-        .post(format!(
-            "{}?kind=set&{body}",
-            include_str!("../DATABASE_URL")
-        ))
-        .header(http::header::CONTENT_LENGTH, 0)
-        .send()
-        .await?
-        .error_for_status()?
-        .text()
+    dbg!(&body);
+    let body = data::parse_query(&body);
+    let title = body.get("title").unwrap_or_else(|| todo!("missing param"));
+    let description = body
+        .get("description")
+        .unwrap_or_else(|| todo!("missing param"));
+    let subject = body
+        .get("subject")
+        .unwrap_or_else(|| todo!("missing param"));
+    // TODO: handle full path
+    let mut query = connection
+        .query(
+            "INSERT INTO cardset (title, description, subject) VALUES (?1, ?2, ?3) RETURNING id;",
+            libsql::params![title.clone(), description.clone(), subject.clone()],
+        )
         .await?;
+    let path = query.next().await?.unwrap().get_str(0)?.to_string();
     let redirect_url = format!("/sets/{path}");
     let response = http::Response::builder()
         .header(http::header::CONTENT_TYPE, "text/html")
@@ -186,23 +209,21 @@ async fn create_set(
 
     Ok(response)
 }
-struct App;
+struct App {
+    connection: libsql::Connection,
+}
 
 impl App {
     async fn run(self, addr: std::net::SocketAddr) -> Result<(), shuttle_runtime::Error> {
         let listener = TcpListener::bind(addr).await?;
-        // We start a loop to continuously accept incoming connections
+        let connection = Arc::new(self.connection);
         loop {
             let (stream, _) = listener.accept().await?;
-
-            // Use an adapter to access something implementing `tokio::io` traits as if they implement
-            // `hyper::rt` IO traits.
             let io = TokioIo::new(stream);
-            // Spawn a tokio task to serve multiple connections concurrently
+            let connection = Arc::clone(&connection);
             tokio::task::spawn(async move {
-                // Finally, we bind the incoming connection to our `hello` service
                 if let Err(err) = http1::Builder::new()
-                    .serve_connection(io, service_fn(router))
+                    .serve_connection(io, service_fn(|request| router(&connection, request)))
                     .await
                 {
                     eprintln!("Error serving connection: {:?}", err);
@@ -229,14 +250,17 @@ impl shuttle_runtime::Service for App {
         Box::pin(self.run(addr))
     }
 }
-
 #[shuttle_runtime::main]
 async fn main(
-    #[shuttle_turso::Turso(
-        addr = "libsql://flashcards-charliec.turso.io",
-        token = "{secrets.DB_TURSO_TOKEN}"
-    )]
-    client: libsql::Connection,
+    #[shuttle_runtime::Secrets] secrets: shuttle_runtime::SecretStore,
 ) -> Result<App, shuttle_runtime::Error> {
-    Ok(App)
+    let database = libsql::Builder::new_remote(
+        "libsql://flashcards-charliec.turso.io".to_string(),
+        secrets.get("DB_AUTH_TOKEN").expect("no auth token present"),
+    )
+    .build()
+    .await
+    .unwrap();
+    let connection = database.connect().expect("failed to connect to database");
+    Ok(App { connection })
 }

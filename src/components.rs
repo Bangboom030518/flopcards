@@ -4,11 +4,19 @@ use std::fmt::Display;
 
 use crate::data::{Set, Subject};
 
-pub fn text_input(id: impl Display, label_text: impl Display, kind: InputType) -> Div {
+pub fn text_input(
+    id: impl Display,
+    name: impl Display,
+    label_text: impl Display,
+    kind: InputType,
+    required: bool,
+) -> Div {
     div().class("input text-input input-gray text-left w-full rounded-t border-b-input border-black dark:border-white overflow-visible")
         .child(input()
                .class("bg-transparent text-left ml-3 text-lg inset-0 margin-auto absolute font-medium outline-none peer w-[calc(100%-1.5rem)] dark:autofill:text-white autofill:text-black no-placeholder")
-               .r#type(kind).placeholder(&label_text).id(&id).name(&id))
+               .r#type(kind)
+               .set_required(required)
+               .placeholder(&label_text).id(&id).name(&name))
         .child(label(&id).class("absolute left-0 w-full h-fit transition-all duration-input text-left ml-3 cursor-text bottom-1/2 translate-y-1/2 peer-typing:text-accent-600 peer-typing:text-xs peer-typing:translate-y-[-1em] peer-typing:font-bold").text(&label_text))
 }
 
@@ -97,15 +105,15 @@ pub fn set_list(sets: Vec<Set>) -> Section {
             sets.into_iter()
                 .map(|set| {
                     article()
-                        .class(format!("card w-full bg-{}-950", set.subject.color()))
+                        .class(format!("card w-full bg-{}-950", set.subject.color))
                         .child(h3(&set.title))
                         .child(
                             div()
                                 .class("w-full flex justify-between")
                                 .child(p("69 cards"))
-                                .child(p(set.subject).class(format!(
+                                .child(p(&set.subject.name).class(format!(
                                 "rounded-full border border-black dark:border-white px-2 bg-{}-800",
-                                set.subject.color()
+                                set.subject.color
                             ))),
                         )
                         .child(
@@ -115,7 +123,7 @@ pub fn set_list(sets: Vec<Set>) -> Section {
                                     a(format!("/sets/{}", set.path()))
                                         .class(format!(
                                             "btn input-{} w-full sound-yes",
-                                            set.subject.color()
+                                            set.subject.color
                                         ))
                                         .child(img("/assets/study.svg", "study").size(24, 24))
                                         .child(p("study")),
@@ -124,7 +132,7 @@ pub fn set_list(sets: Vec<Set>) -> Section {
                                     a(format!("/sets/{}/edit", set.path()))
                                         .class(format!(
                                             "btn input-{} w-full sound-yes",
-                                            set.subject.color()
+                                            set.subject.color
                                         ))
                                         .child(img("/assets/edit.svg", "edit").size(24, 24))
                                         .child(p("edit")),
@@ -135,25 +143,25 @@ pub fn set_list(sets: Vec<Set>) -> Section {
         )
 }
 
-pub fn subject_menu() -> Menu {
+pub fn subject_menu(subjects: &[Subject]) -> Menu {
     // input-red input-orange input-yellow input-emerald input-purple
-    horizontal_btn_group(Subject::all().into_iter().map(|subject| {
-        button(format!("subject-{subject}"))
-            .class(format!("btn input-{} sound-{subject}", subject.color()))
-            .hx_get(format!("/view/sets?subject={subject}"))
-            .hx_push_url(format!("?subject={subject}"))
-            .hx_target("#setlist")
-            .hx_on(
-                "htmx:before-request",
-                format!("document.getElementById('loading-animation').style.display='block';document.getElementById('subject-input').value='{subject}'"),
-            )
-            .hx_on(
-                "htmx:after-request",
-                format!("document.getElementById('loading-animation').style.display='none';new Audio('assets/moan.mp3').play()"),
-            )
-            .hx_swap("outerHTML swap:200ms")
-            .child(img(format!("/assets/{subject}.svg"), subject).size(24, 24))
-            .child(p(subject))
-    }))
-    .class("w-fit")
+    horizontal_btn_group(subjects.iter().map(|Subject { id, name, color }| {
+            button(format!("subject-{id}"))
+                .class(format!("btn input-{color} sound-{id}"))
+                .hx_get(format!("/view/sets?subject={id}"))
+                .hx_push_url(format!("?subject={id}"))
+                .hx_target("#setlist")
+                .hx_on(
+                    "htmx:before-request",
+                    format!("document.getElementById('loading-animation').style.display='block';document.getElementById('subject-input').value='{id}'"),
+                )
+                .hx_on(
+                    "htmx:after-request",
+                    format!("document.getElementById('loading-animation').style.display='none';new Audio('assets/moan.mp3').play()"),
+                )
+                .hx_swap("outerHTML swap:200ms")
+                .child(img(format!("/assets/{id}.svg"), &name).size(24, 24))
+                .child(p(&name))
+        }))
+        .class("w-fit")
 }

@@ -1,16 +1,18 @@
 BEGIN TRANSACTION;
 
 CREATE TABLE cardset (
-  id INTEGER PRIMARY KEY,
+  id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
   description TEXT NOT NULL,
+  parent TEXT,
   created DATETIME DEFAULT CURRENT_TIMESTAMP,
   subject TEXT NOT NULL,
-  FOREIGN KEY (subject) REFERENCES subject (id)
+  FOREIGN KEY (subject) REFERENCES subject (id),
+  FOREIGN KEY (parent) REFERENCES folder (id)
 );
 
 CREATE TABLE folder (
-  id INTEGER PRIMARY KEY,
+  id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
   description TEXT NOT NULL,
   created DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -20,14 +22,15 @@ CREATE TABLE folder (
 
 CREATE TABLE subject (
   id TEXT PRIMARY KEY,
+  name TEXT NOT NULL, 
   color TEXT NOT NULL
 );
 
-INSERT INTO subject (id, color) VALUES
-('maths', 'red'),
-('geography', 'emerald'),
-('other', 'purple'),
-('spanish', 'yellow');
+INSERT INTO subject (id, name, color) VALUES
+('maths', 'maths', 'red'),
+('geography', 'geography', 'emerald'),
+('other', 'other', 'purple'),
+('spanish', 'spanish', 'yellow');
 
 CREATE TABLE term (
   id INTEGER PRIMARY KEY,
@@ -40,4 +43,4 @@ CREATE TABLE term (
 
 COMMIT;
 
--- # vim: tabstop=4 shiftwidth=4
+-- # vim: tabstop=2 shiftwidth=2
