@@ -2,7 +2,7 @@ use html_builder::prelude::*;
 use std::fmt::Display;
 use std::option::Option;
 
-use crate::data::{Set, Subject};
+use crate::data::{self, Set, Subject};
 
 pub fn text_input(
     id: impl Display,
@@ -20,6 +20,53 @@ pub fn text_input(
     div().class("input text-input input-gray text-left w-full rounded-t border-b-input border-black dark:border-white overflow-visible")
         .child(if let Some(value) = value {input.value(value)}else { input })
         .child(label(&id).class("absolute left-0 w-full h-fit transition-all duration-input text-left ml-3 cursor-text bottom-1/2 translate-y-1/2 peer-typing:text-accent-600 peer-typing:text-xs peer-typing:translate-y-[-1em] peer-typing:font-bold").text(&label_text))
+}
+
+pub fn flashcard_stack(cards: impl IntoIterator<Item = data::Card>) -> Div {
+    // tailwind include: btn-terrible btn-bad btn-ok btn-good btn-perfect
+    div()
+        .class("grid place-items-center gap-4")
+        .child(
+            div()
+                .class("flashcard-stack")
+                .children(cards.into_iter().map(flashcard)),
+        )
+        .child(button_with_icon("btn-flip", "flip", "flip").class("input-accent"))
+        .child(horizontal_btn_group(data::Rating::all().map(|rating| {
+            button_with_icon(format!("btn-{rating}"), rating, "").title(rating)
+        })))
+}
+
+pub fn flashcard(card: data::Card) -> Article {
+    article()
+            .class("grid place-items-center gap-4 text-center")
+            .data("card-id", card.id)
+            .child(div().class("relative min-w-[60ch] min-h-[40ch]")
+                .child(
+                    div()
+                        .class("card definition absolute top-0 left-0 w-full h-full grid place-items-center transition-[opacity,transform] duration-300")
+                        // .reactive_class("flashcard-hidden", term_hidden)
+                        .child(
+                            div()
+                                .class("card-body")
+                                .child(
+                                    p(card.term)
+                                )
+                        )
+                )
+                .child(
+                    div()
+                        .class("card definition absolute top-0 left-0 w-full h-full grid place-items-center transition-[opacity,transform] duration-300 flashcard-hidden")
+                        // .reactive_class("flashcard-hidden", definition_hidden)
+                        .child(
+                            div()
+                                .class("card-body")
+                                .child(
+                                    p(card.definition)
+                                )
+                        )
+                )
+            )
 }
 
 pub fn fab(id: impl Display, logo: impl Display) -> Button {

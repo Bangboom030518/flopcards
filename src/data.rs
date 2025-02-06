@@ -2,8 +2,49 @@ use futures::{StreamExt, TryStreamExt};
 use http::Request;
 use http_body_util::BodyExt;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, future::IntoFuture};
+use std::{collections::HashMap, fmt::Display, future::IntoFuture};
 use uuid::Uuid;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Rating {
+    Terrible,
+    Bad,
+    Ok,
+    Good,
+    Perfect,
+}
+
+impl Rating {
+    pub const fn all() -> [Self; 5] {
+        [
+            Self::Terrible,
+            Self::Bad,
+            Self::Ok,
+            Self::Good,
+            Self::Perfect,
+        ]
+    }
+}
+
+impl Display for Rating {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let string = match self {
+            Self::Terrible => "terrible",
+            Self::Bad => "bad",
+            Self::Ok => "ok",
+            Self::Good => "good",
+            Self::Perfect => "perfect",
+        };
+        write!(f, "{string}")
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Card {
+    pub id: u64,
+    pub term: String,
+    pub definition: String,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Subject {
@@ -120,41 +161,29 @@ impl Set {
                 })
     }
 
-    pub async fn fetch_all(
-        connection: &libsql::Connection,
-        subject: &str,
-    ) -> libsql::Result<Vec<Self>> {
-        let query = if subject == "all" {
-            connection.query(
-                "SELECT cardset.id, cardset.title, cardset.description, cardset.parent, cardset.created, subject.id, subject.name, subject.color \
-                FROM cardset INNER JOIN subject ON cardset.subject=subject.id;", ()
-            ).await?
-        } else {
-            connection.query(
-                "SELECT cardset.id, cardset.title, cardset.description, cardset.parent, cardset.created, subject.id, subject.name, subject.color \
-                FROM cardset INNER JOIN subject ON cardset.subject=subject.id WHERE cardset.subject = ?1;", [subject]
-            ).await?
-        };
-        query
+    pub async fn fetch_cards(&self) -> libsql::Result<Vec<Card>> {
+        connection
+            .query(
+                "SELECT id, term, definition FROM card WHERE cardset=?1",
+                [self.id.clone()],
+            )
+            .await?
             .into_stream()
             .map(|row| {
                 row.and_then(|row| {
-                    Ok(Self {
+                    Ok(Card {
                         id: row.get(0)?,
-                        title: row.get(1)?,
-                        description: row.get(2)?,
-                        parent: row.get(3)?,
-                        created: row.get(4)?,
-                        subject: Subject {
-                            id: row.get(5)?,
-                            name: row.get(6)?,
-                            color: row.get(7)?,
-                        },
+                        term: row.get(1)?,
+                        definition: row.get(2)?,
                     })
                 })
             })
             .try_collect()
             .await
+    }
+
+    pub async fn fetch_all(subject: &str) -> Vec<Self> {
+        todo!()
     }
 }
 /*

@@ -65,14 +65,11 @@ fn create_set_popup(subjects: &[Subject]) -> Dialog {
         )
 }
 
-async fn index(
-    connection: &libsql::Connection,
-    request: Request<hyper::body::Incoming>,
-) -> libsql::Result<Html> {
+async fn index(request: Request<hyper::body::Incoming>) -> Html {
     let subjects = Subject::fetch_all(connection).await?;
     let query = Query::from_request(&request);
     let sets = if let Ok(subject) = query.get("subject") {
-        Set::fetch_all(connection, &subject).await?
+        Set::fetch_all(&subject)
     } else {
         Vec::new()
     };
@@ -107,10 +104,7 @@ async fn index(
         ))
 }
 
-async fn sets_view(
-    connection: &libsql::Connection,
-    request: Request<hyper::body::Incoming>,
-) -> Result<Section, ResourceError> {
+async fn sets_view(request: Request<hyper::body::Incoming>) -> Result<Section, ResourceError> {
     let request = &request;
     let query = Query::from_request(request);
     let subject = query.get("subject")?;
@@ -134,7 +128,10 @@ async fn set(connection: &libsql::Connection, path: &str) -> Result<Html, Resour
         .child(
             body()
                 .class("p-8 grid place-items-center items-start gap-8 bg-neutral")
-                .child(h1(format!("{} cards", set.title)))
+                .child(h1("Study"))
+                .child(components::flashcard_stack(
+                    set.fetch_cards(connection).await?,
+                ))
                 .script(include_str!("../script.js")),
         ))
 }
@@ -182,18 +179,15 @@ async fn edit_set(connection: &libsql::Connection, path: &str) -> Result<Html, R
                 .script(include_str!("../script.js")),
         ))
 }
+
 async fn router(
-    database: &libsql::Database,
     request: Request<hyper::body::Incoming>,
 ) -> Result<Response<Full<Bytes>>, ResourceError> {
-    let connection = database
-        .connect()
-        .unwrap_or_else(|err| todo!("db error: {err}"));
     let path = request.uri().path();
     match *request.method() {
         Method::GET => {
             if path == "/" {
-                index(&connection, request)
+                index(request)
                     .await
                     .unwrap_or_else(|error| todo!("handle me: {error}"))
                     .response_ok()
@@ -247,52 +241,17 @@ async fn router(
     }
 }
 
-async fn create_set(
-    connection: &libsql::Connection,
-    request: Request<hyper::body::Incoming>,
-) -> Result<Response<Full<Bytes>>, ResourceError> {
-    let body = data::body_to_string(request).await?;
-    dbg!(&body);
-    let body = Query::from_str(&body);
-    let title = body.get("title")?;
-    let subject = body.get("subject")?;
-    let id = data::generate_set_id(connection, &format!("{subject}/{title}"), 10).await?;
-    let description = body.get("description")?;
-    // TODO: handle full path
-    let mut query = connection
-        .query(
-            "INSERT INTO cardset (id, title, description, subject) VALUES (?1, ?2, ?3, ?4) RETURNING id;",
-            libsql::params![id, title.clone(), description.clone(), subject.clone()],
-        )
-        .await?;
-    let path = query.next().await?.unwrap().get_str(0)?.to_string();
-    let redirect_url = format!("/sets/{path}");
-    let response = http::Response::builder()
-        .header(http::header::CONTENT_TYPE, "text/html")
-        .header(http::header::LOCATION, &redirect_url)
-        .status(303)
-        .body(Full::new(Bytes::from(format!(
-            "Redirecting to <a href='{redirect_url}'>{redirect_url}</a>"
-        ))))
-        .unwrap();
-
-    Ok(response)
-}
-struct App {
-    database: libsql::Database,
-}
+struct App;
 
 impl App {
     async fn run(self, addr: std::net::SocketAddr) -> Result<(), shuttle_runtime::Error> {
         let listener = TcpListener::bind(addr).await?;
-        let database = Arc::new(self.database);
         loop {
             let (stream, _) = listener.accept().await?;
             let io = TokioIo::new(stream);
-            let database = Arc::clone(&database);
             tokio::task::spawn(async move {
                 if let Err(err) = http1::Builder::new()
-                    .serve_connection(io, service_fn(|request| router(&database, request)))
+                    .serve_connection(io, service_fn(|request| router(request)))
                     .await
                 {
                     eprintln!("Error serving connection: {err:?}");
@@ -323,13 +282,5 @@ impl shuttle_runtime::Service for App {
 async fn main(
     #[shuttle_runtime::Secrets] secrets: shuttle_runtime::SecretStore,
 ) -> Result<App, shuttle_runtime::Error> {
-    let database = libsql::Builder::new_remote(
-        "libsql://flashcards-charliec.turso.io".to_string(),
-        secrets.get("DB_AUTH_TOKEN").expect("no auth token present"),
-    )
-    .build()
-    .await
-    .unwrap();
-
-    Ok(App { database })
+    Ok(App)
 }

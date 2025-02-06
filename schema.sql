@@ -32,11 +32,10 @@ INSERT INTO subject (id, name, color) VALUES
 ('other', 'other', 'purple'),
 ('spanish', 'spanish', 'yellow');
 
-CREATE TABLE term (
+CREATE TABLE card (
   id INTEGER PRIMARY KEY,
   term TEXT NOT NULL,
   definition TEXT NOT NULL,
-  created DATETIME DEFAULT CURRENT_TIMESTAMP,
   cardset INTEGER NOT NULL,
   FOREIGN KEY (cardset) REFERENCES cardset (id)
 );
