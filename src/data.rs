@@ -2,7 +2,7 @@ use futures::{StreamExt, TryStreamExt};
 use http::Request;
 use http_body_util::BodyExt;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt::Display, future::IntoFuture};
+use std::{collections::HashMap, fmt::Display, fs, future::IntoFuture};
 use uuid::Uuid;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -41,35 +41,25 @@ impl Display for Rating {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Card {
-    pub id: u64,
     pub term: String,
     pub definition: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Subject {
-    pub id: String,
     pub name: String,
     pub color: String,
 }
 
 impl Subject {
-    pub async fn fetch_all(connection: &libsql::Connection) -> libsql::Result<Vec<Self>> {
-        connection
-            .query("SELECT id, name, color FROM subject ORDER BY id", ())
-            .await?
-            .into_stream()
-            .map(|row| {
-                row.and_then(|row| {
-                    Ok(Self {
-                        id: row.get_str(0)?.to_string(),
-                        name: row.get_str(1)?.to_string(),
-                        color: row.get_str(2)?.to_string(),
-                    })
-                })
+    pub fn fetch_all() -> Vec<Self> {
+        macros::subjects!()
+            .into_iter()
+            .map(|(name, color)| Self {
+                name: name.to_string(),
+                color: color.to_string(),
             })
-            .try_collect()
-            .await
+            .collect()
     }
 }
 
@@ -77,16 +67,18 @@ impl Subject {
 pub enum ResourceError {
     #[error("http request (trick that's worth it) failed: {0}")]
     Http(#[from] reqwest::Error),
-    #[error("database says no: {0}")]
-    Database(#[from] libsql::Error),
     #[error("{0}")]
     Hyper(#[from] hyper::Error),
     #[error("request body smells like sardeens (eeew): {0}")]
-    Parse(#[from] serde_json::Error),
+    ParseJson(#[from] serde_json::Error),
+    #[error("database didn't want to see a trick that's worth it: {0}")]
+    ParseToml(#[from] toml::de::Error),
     #[error("path '{0}' couldn't be found. maybe it fell out of a coconut tree?")]
     NotFound(String),
     #[error("{0}")]
     Custom(String),
+    #[error("file system couldn't find the file (where it's at?)")]
+    Io(#[from] std::io::Error),
 }
 
 pub async fn body_to_string(
@@ -102,88 +94,32 @@ pub async fn body_to_string(
     Ok(String::from_utf8_lossy(&body).to_string())
 }
 
-#[async_recursion::async_recursion]
-pub async fn generate_set_id(
-    connection: &libsql::Connection,
-    name: &str,
-    quota: u8,
-) -> Result<String, ResourceError> {
-    if quota == 0 {
-        return Ok(Uuid::new_v4().to_string());
-    }
-    let name = name.to_lowercase().replace(' ', "-");
-    let rows: Vec<_> = connection
-        .query("SELECT id FROM cardset WHERE id = ?1", [name.clone()])
-        .await?
-        .into_stream()
-        .try_collect()
-        .await?;
-    if rows.is_empty() {
-        Ok(name.to_string())
-    } else {
-        generate_set_id(connection, &format!("{name}1"), quota - 1).await
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct Set {
-    pub id: String,
+    pub path: String,
     pub title: String,
     pub description: String,
-    pub parent: Option<String>,
-    pub created: String,
     pub subject: Subject,
+    pub cards: Vec<Card>,
 }
 
 impl Set {
-    pub async fn fetch_from_id(
-        connection: &libsql::Connection,
-        id: &str,
-    ) -> libsql::Result<Option<Self>> {
-        connection.query(
-            "SELECT cardset.id, cardset.title, cardset.description, cardset.parent, cardset.created, subject.id, subject.name, subject.color \
-            FROM cardset INNER JOIN subject ON cardset.subject=subject.id WHERE cardset.id = ?1;", [id]
-        ).await?
-                .next().await.and_then(|row| match row {
-                    Some(row) => Ok(Some(Self {
-                        id: row.get(0)?,
-                        title: row.get(1)?,
-                        description: row.get(2)?,
-                        parent: row.get(3)?,
-                        created: row.get(4)?,
-                        subject: Subject {
-                            id: row.get(5)?,
-                            name: row.get(6)?,
-                            color: row.get(7)?,
-                        },
-                    })),
-                    None => Ok(None)
-                })
+    pub fn get(path: &str) -> Result<Self, ResourceError> {
+        let config = fs::read_to_string(path)?;
+        Ok(toml::from_str(&config)?)
     }
 
-    pub async fn fetch_cards(&self) -> libsql::Result<Vec<Card>> {
-        connection
-            .query(
-                "SELECT id, term, definition FROM card WHERE cardset=?1",
-                [self.id.clone()],
-            )
-            .await?
-            .into_stream()
-            .map(|row| {
-                row.and_then(|row| {
-                    Ok(Card {
-                        id: row.get(0)?,
-                        term: row.get(1)?,
-                        definition: row.get(2)?,
-                    })
-                })
-            })
-            .try_collect()
-            .await
-    }
-
-    pub async fn fetch_all(subject: &str) -> Vec<Self> {
-        todo!()
+    pub fn fetch_all(subject: &str) -> Result<Vec<Self>, ResourceError> {
+        let mut sets = Vec::new();
+        for entry in fs::read_dir(format!("./flashcards/{subject}"))? {
+            let entry = entry.unwrap();
+            let name = entry.file_name().into_string().unwrap();
+            if !(entry.file_type()?.is_file() && name.ends_with(".toml")) {
+                continue;
+            }
+            sets.push(Self::get(&format!("./flashcards/{subject}/{name}"))?);
+        }
+        Ok(sets)
     }
 }
 /*

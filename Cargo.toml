@@ -22,5 +22,7 @@ shuttle-runtime = "0.49"
 shuttle-turso = "0.49"
 thiserror = "2.0"
 tokio = { version = "1.42", features = ["full"] }
+toml = "0.8.20"
 url = "2.5.2"
 uuid = "1.11.0"
+macros = { path = "./macros" }

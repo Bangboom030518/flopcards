@@ -11,7 +11,6 @@ use hyper::{Request, Response};
 use hyper_util::rt::TokioIo;
 use std::fs;
 use std::net::SocketAddr;
-use std::sync::Arc;
 use tokio::net::TcpListener;
 mod components;
 mod data;
@@ -52,9 +51,9 @@ fn create_set_popup(subjects: &[Subject]) -> Dialog {
                         )
                         .child(
                             select("subject-input", "subject")
-                                .options(
-                                    subjects.iter().map(|subject| (&subject.name, &subject.id)),
-                                )
+                                .options(subjects.iter().map(|subject| {
+                                    (subject.name.to_string(), subject.name.replace(' ', "-"))
+                                }))
                                 .class("text-black"),
                         )
                         .child(
@@ -65,15 +64,15 @@ fn create_set_popup(subjects: &[Subject]) -> Dialog {
         )
 }
 
-async fn index(request: Request<hyper::body::Incoming>) -> Html {
-    let subjects = Subject::fetch_all(connection).await?;
+async fn index(request: Request<hyper::body::Incoming>) -> Result<Html, ResourceError> {
+    let subjects = Subject::fetch_all();
     let query = Query::from_request(&request);
     let sets = if let Ok(subject) = query.get("subject") {
-        Set::fetch_all(&subject)
+        Set::fetch_all(&subject)?
     } else {
         Vec::new()
     };
-    Ok(html("en")
+    Err(html("en")
         .child(
             head()
                 .template()
@@ -108,15 +107,11 @@ async fn sets_view(request: Request<hyper::body::Incoming>) -> Result<Section, R
     let request = &request;
     let query = Query::from_request(request);
     let subject = query.get("subject")?;
-    Ok(components::set_list(
-        &Set::fetch_all(connection, &subject).await?,
-    ))
+    Ok(components::set_list(&Set::fetch_all(&subject)?))
 }
 
-async fn set(connection: &libsql::Connection, path: &str) -> Result<Html, ResourceError> {
-    let set = Set::fetch_from_id(connection, path)
-        .await?
-        .unwrap_or_else(|| todo!("404"));
+async fn set(path: &str) -> Result<Html, ResourceError> {
+    let set = Set::get(path).unwrap_or_else(|_| todo!("404"));
     Ok(html("en")
         .child(
             head()
@@ -129,53 +124,7 @@ async fn set(connection: &libsql::Connection, path: &str) -> Result<Html, Resour
             body()
                 .class("p-8 grid place-items-center items-start gap-8 bg-neutral")
                 .child(h1("Study"))
-                .child(components::flashcard_stack(
-                    set.fetch_cards(connection).await?,
-                ))
-                .script(include_str!("../script.js")),
-        ))
-}
-
-async fn edit_set(connection: &libsql::Connection, path: &str) -> Result<Html, ResourceError> {
-    let set = Set::fetch_from_id(connection, path)
-        .await?
-        .ok_or_else(|| ResourceError::NotFound(format!("set '{path}'")))?;
-
-    Ok(html("en")
-        .child(
-            head()
-                .template()
-                .style(include_str!("./output.css"))
-                .title(format!("edit {} - flopcards", set.title))
-                .raw_text("<script src='assets/htmx.min.js'></script>"),
-        )
-        .child(
-            body()
-                .class("p-8 grid place-items-center items-start gap-8 bg-neutral")
-                .child(h1(format!("edit {}", set.title)))
-                .child(
-                    fieldset()
-                        .class("w-full card grid gap-4")
-                        .child(h2("edit title and description").class("text-left"))
-                        .child(components::text_input(
-                            "set-title",
-                            "title",
-                            "set title",
-                            InputType::Text,
-                            true,
-                            Some(set.title),
-                        ))
-                        .child(
-                            textarea("description-input", "description")
-                                .text(&set.description)
-                                .placeholder("description")
-                                .class("text-black"),
-                        )
-                        .child(
-                            components::button_with_icon("save-set", "publish", "save set")
-                                .class("input-accent"),
-                        ),
-                )
+                .child(components::flashcard_stack(set.cards))
                 .script(include_str!("../script.js")),
         ))
 }
@@ -187,10 +136,7 @@ async fn router(
     match *request.method() {
         Method::GET => {
             if path == "/" {
-                index(request)
-                    .await
-                    .unwrap_or_else(|error| todo!("handle me: {error}"))
-                    .response_ok()
+                index(request).await.response_ok()
             } else if path == "/favicon.ico" {
                 let path = format!("/{}/assets/favicon.ico", env!("CARGO_MANIFEST_DIR"));
                 let bytes = fs::read(path)
@@ -219,20 +165,13 @@ async fn router(
                 return Ok(response);
             } else if let Some(path) = path.strip_prefix("/view/") {
                 match path {
-                    "sets" => sets_view(&connection, request).await?.response_ok(),
+                    "sets" => sets_view(request).await?.response_ok(),
                     _ => Err(ResourceError::NotFound(format!("/view/{path}"))),
                 }
             } else if let Some(path) = path.strip_prefix("/sets/") {
-                set(&connection, path).await?.response_ok()
+                set(path).await?.response_ok()
             } else if let Some(path) = path.strip_prefix("/edit-set/") {
-                edit_set(&connection, path).await?.response_ok()
-            } else {
-                Err(ResourceError::NotFound(path.to_string()))
-            }
-        }
-        Method::POST => {
-            if path == "/create-set" {
-                create_set(&connection, request).await
+                edit_set(path).await?.response_ok()
             } else {
                 Err(ResourceError::NotFound(path.to_string()))
             }
